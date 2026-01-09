@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>國道里程與交流道計算器</title>
+    <title>國道里程與平均距離計算器</title>
     <style>
         body { font-family: "Microsoft JhengHei", sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; background-color: #f4f4f4; }
         h2 { text-align: center; color: #333; }
@@ -22,6 +22,10 @@
         .route-btn:hover { background: #f0f0f0; border-color: #aaa; }
         .route-btn.active { background: #e8f0fe; border-color: #007bff; color: #0056b3; border-left: 5px solid #007bff; }
 
+        /* 統計資訊區塊 (新增) */
+        .stats-box { background: #e3f2fd; padding: 12px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #bbdefb; font-size: 0.95em; color: #0d47a1; }
+        .stats-highlight { color: #d32f2f; font-weight: bold; font-size: 1.1em; }
+
         /* 分析結果區塊 */
         #analysis-result { margin-top: 20px; padding: 20px; background: #fff; border-left: 6px solid #28a745; display: none; border-radius: 5px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
         .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 10px; }
@@ -39,11 +43,11 @@
 </head>
 <body>
 
-    <h2>🚗 國道里程與交流道查詢</h2>
+    <h2>🚗 國道里程與平均距離計算器</h2>
     
     <div class="input-group">
         <input type="text" id="start" placeholder="請輸入起點 (例如: 台北101)">
-        <input type="text" id="end" placeholder="請輸入終點 (例如: 高雄火車站)">
+        <input type="text" id="end" placeholder="請輸入終點 (例如: 台中火車站)">
         <button onclick="calculateRoute()">查詢路線</button>
     </div>
 
@@ -97,170 +101,4 @@
             }
 
             const request = {
-                origin: start,
-                destination: end,
-                travelMode: 'DRIVING',
-                provideRouteAlternatives: true,
-                drivingOptions: {
-                    departureTime: new Date(),
-                    trafficModel: 'bestguess'
-                }
-            };
-
-            directionsService.route(request, function(result, status) {
-                if (status == 'OK') {
-                    allRoutes = result.routes;
-                    renderRouteList(result.routes);
-                    selectRoute(0, result); // 預設選第一條
-                } else {
-                    handleError(status);
-                }
-            });
-        }
-
-        function handleError(status) {
-            if (status === 'NOT_FOUND') alert('找不到地點，請嘗試輸入完整地址。');
-            else if (status === 'ZERO_RESULTS') alert('無法規劃開車路線。');
-            else alert('查詢失敗: ' + status);
-        }
-
-        function renderRouteList(routes) {
-            const panel = document.getElementById("selection-panel");
-            panel.innerHTML = "<h3 style='margin-top:0; padding-bottom:10px; border-bottom:1px solid #eee;'>建議路線</h3>";
-
-            routes.forEach((route, index) => {
-                const summary = route.summary; 
-                const distance = route.legs[0].distance.text;
-                const duration = route.legs[0].duration.text;
-
-                const btn = document.createElement("button");
-                btn.className = "route-btn";
-                btn.innerHTML = `
-                    <div style="font-weight:bold; font-size:1.1em;">路線 ${index + 1}</div>
-                    <div style="color:#666; font-size:0.9em;">${summary}</div>
-                    <div style="margin-top:5px;">總長: ${distance} | 時間: ${duration}</div>
-                `;
-                btn.onclick = () => selectRoute(index);
-                panel.appendChild(btn);
-            });
-        }
-
-        function selectRoute(index, resultObj = null) {
-            if (!resultObj) {
-                // 如果不是第一次查詢，只需重繪路線
-                directionsRenderer.setDirections({routes: allRoutes, request: {}, status: "OK"}); 
-            } else {
-                directionsRenderer.setDirections(resultObj);
-            }
-            directionsRenderer.setRouteIndex(index);
-            
-            document.querySelectorAll(".route-btn").forEach((btn, i) => {
-                btn.classList.toggle("active", i === index);
-            });
-
-            analyzeHighwayDetails(allRoutes[index]);
-        }
-
-        // ★★★ 核心修改邏輯在此 ★★★
-        function analyzeHighwayDetails(route) {
-            const leg = route.legs[0];
-            const steps = leg.steps;
-            
-            // 1. 基本數據
-            const totalDistanceText = leg.distance.text; // 全程總距離 (例如: "158 公里")
-            const totalDurationText = leg.duration.text; // 全程總時間
-            
-            let highwayDistanceVal = 0;
-            let entryInstruction = null; // 上交流道指示
-            let exitInstruction = null;  // 下交流道指示
-            let isOnHighway = false;
-
-            // 定義國道關鍵字
-            const highwayRegex = /(國道|高速公路|Freeway|System|Expressway)/i; 
-
-            steps.forEach((step, i) => {
-                // 移除 HTML 標籤以取得純文字指示
-                const rawInstruction = step.instructions;
-                const cleanInstruction = rawInstruction.replace(/<[^>]*>/g, ""); 
-                
-                if (highwayRegex.test(cleanInstruction)) {
-                    // --- 進入國道 ---
-                    if (!isOnHighway) {
-                        isOnHighway = true;
-                        // 通常"上交流道"的指示會在進入國道的那一步，或者前一步的"Merge onto..."
-                        // 我們抓取當前這一步的指示作為起點
-                        entryInstruction = cleanInstruction;
-                    }
-                    
-                    // 累加國道里程
-                    highwayDistanceVal += step.distance.value;
-                    
-                    // 持續更新"最後一個國道步驟"，預設它可能是出口
-                    // 但更準確的是抓取"離開國道"的那一刻
-                } else {
-                    // --- 離開國道 ---
-                    if (isOnHighway) {
-                        isOnHighway = false;
-                        // 剛離開國道的那一步，通常包含"Take exit..."或"前往..."
-                        exitInstruction = cleanInstruction;
-                    }
-                }
-            });
-
-            // 顯示結果
-            const resultDiv = document.getElementById("analysis-result");
-            resultDiv.style.display = "block";
-
-            let highwayHtml = "";
-            let highwayKm = (highwayDistanceVal / 1000).toFixed(1);
-
-            if (highwayDistanceVal > 0) {
-                // 處理顯示文字，若太長可以截斷
-                const entryText = entryInstruction || "起點即在高速公路上";
-                const exitText = exitInstruction || "終點仍在高速公路上";
-
-                highwayHtml = `
-                    <div class="result-grid">
-                        <div class="result-item">
-                            <div class="result-label">🏁 全程總距離</div>
-                            <div class="result-value">${totalDistanceText}</div>
-                        </div>
-                         <div class="result-item" style="background:#e8f5e9;">
-                            <div class="result-label">🛣️ 國道/高架里程</div>
-                            <div class="result-value highlight">${highwayKm} km</div>
-                        </div>
-                    </div>
-
-                    <div class="ic-info">
-                        <div class="ic-step">
-                            <span class="ic-icon">⬆️ 上</span>
-                            <span class="ic-text"><strong>進入點/交流道：</strong><br>${entryText}</span>
-                        </div>
-                        <div class="ic-step">
-                            <span class="ic-icon">⬇️ 下</span>
-                            <span class="ic-text"><strong>離開點/交流道：</strong><br>${exitText}</span>
-                        </div>
-                    </div>
-                `;
-            } else {
-                highwayHtml = `
-                    <div class="result-grid">
-                        <div class="result-item">
-                            <div class="result-label">🏁 全程總距離</div>
-                            <div class="result-value">${totalDistanceText}</div>
-                        </div>
-                         <div class="result-item">
-                            <div class="result-label">🛣️ 道路類型</div>
-                            <div class="result-value">平面道路 (無國道)</div>
-                        </div>
-                    </div>
-                `;
-            }
-
-            resultDiv.innerHTML = `<h4>📊 路線分析詳情</h4>${highwayHtml}`;
-        }
-
-        window.onload = initMap;
-    </script>
-</body>
-</html>
+                origin:
