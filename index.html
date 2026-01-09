@@ -48,10 +48,10 @@
 
     <script>
         let map, directionsService, directionsRenderer;
-        let allRoutes = []; // 儲存 API 回傳的所有路線
+        let allRoutes = [];
 
         function initMap() {
-            // 初始化地圖中心 (台灣)
+            // 1. 初始化地圖
             const taiwan = { lat: 23.6978, lng: 120.9605 };
             map = new google.maps.Map(document.getElementById("map"), {
                 zoom: 7,
@@ -60,6 +60,31 @@
             directionsService = new google.maps.DirectionsService();
             directionsRenderer = new google.maps.DirectionsRenderer();
             directionsRenderer.setMap(map);
+
+            // 2. ★ 新增：啟動輸入框的自動完成功能
+            setupAutocomplete("start");
+            setupAutocomplete("end");
+        }
+
+        // 設定自動完成的輔助函式
+        function setupAutocomplete(elementId) {
+            const input = document.getElementById(elementId);
+            const options = {
+                componentRestrictions: { country: "tw" }, // 限制只搜尋台灣範圍
+                fields: ["formatted_address", "geometry", "name"], // 只抓取需要的欄位以節省成本
+            };
+            
+            const autocomplete = new google.maps.places.Autocomplete(input, options);
+            
+            // 當使用者從選單選取地點後，不需要做特別的事，Google 會自動把完整地址填入 input
+            // 但我們可以選擇讓地圖自動跳轉到該點 (非必要，看需求)
+            autocomplete.addListener("place_changed", () => {
+                const place = autocomplete.getPlace();
+                if (!place.geometry || !place.geometry.location) {
+                    window.alert("找不到該地點的詳細資訊: '" + place.name + "'");
+                    return;
+                }
+            });
         }
 
         function calculateRoute() {
@@ -75,33 +100,39 @@
                 origin: start,
                 destination: end,
                 travelMode: 'DRIVING',
-                provideRouteAlternatives: true, // 關鍵：允許回傳多條路線
+                provideRouteAlternatives: true,
                 drivingOptions: {
-                    departureTime: new Date(), // 考慮即時路況 (部分地區有效)
+                    departureTime: new Date(),
                     trafficModel: 'bestguess'
                 }
             };
 
             directionsService.route(request, function(result, status) {
                 if (status == 'OK') {
-                    allRoutes = result.routes; // 存下來供後續選擇用
+                    allRoutes = result.routes;
                     renderRouteList(result.routes);
-                    
-                    // 預設顯示第一條路線
                     selectRoute(0, result);
                 } else {
-                    alert('路徑搜尋失敗: ' + status);
+                    // 這裡可以顯示更友善的錯誤訊息
+                    if (status === 'NOT_FOUND') {
+                        alert('找不到您輸入的地點，請嘗試輸入完整地址或使用下拉選單選擇地點。');
+                    } else if (status === 'ZERO_RESULTS') {
+                        alert('這兩地之間無法規劃開車路線（可能隔海或無路可通）。');
+                    } else {
+                        alert('路徑搜尋失敗: ' + status);
+                    }
                 }
             });
         }
 
-        // 渲染左側的路線選擇按鈕
+        // --- 以下為原有的顯示邏輯，保持不變 ---
+
         function renderRouteList(routes) {
             const panel = document.getElementById("selection-panel");
             panel.innerHTML = "<h3>請選擇路線：</h3>";
 
             routes.forEach((route, index) => {
-                const summary = route.summary; // 例如 "國道1號"
+                const summary = route.summary; 
                 const distance = route.legs[0].distance.text;
                 const duration = route.legs[0].duration.text;
 
@@ -113,74 +144,52 @@
             });
         }
 
-        // 當使用者選擇某一條路線時
         function selectRoute(index, resultObj = null) {
-            // 如果沒有傳入 resultObj，代表是從按鈕點擊的，需要重新設定 renderer
             if (!resultObj) {
-                // 這裡我們需要重新建構一個只包含該路線的 Result 物件給 Renderer 
-                // 但簡單的做法是直接設定 routeIndex (DirectionsRenderer 支援)
                 directionsRenderer.setDirections({routes: allRoutes, request: {}, status: "OK"}); 
             } else {
                 directionsRenderer.setDirections(resultObj);
             }
+            directionsRenderer.setRouteIndex(index);
             
-            directionsRenderer.setRouteIndex(index); // 切換地圖顯示的路線
-
-            // 視覺上的按鈕選取效果
             document.querySelectorAll(".route-btn").forEach((btn, i) => {
                 btn.classList.toggle("active", i === index);
             });
 
-            // ★ 執行核心邏輯：分析該路線的高速公路段
             analyzeHighwayDetails(allRoutes[index]);
         }
 
-        // 核心邏輯：解析 Steps 找出上下交流道與里程
         function analyzeHighwayDetails(route) {
             const steps = route.legs[0].steps;
             let highwayDistance = 0;
             let entryPoint = null;
             let exitPoint = null;
             let isOnHighway = false;
-            let highwayName = "";
 
-            // 用 Regex 簡單判斷關鍵字 (國道、高速公路)
-            const highwayRegex = /(國道|高速公路|Freeway)/;
+            // 稍微增強 Regex，避免漏抓 "National Freeway"
+            const highwayRegex = /(國道|高速公路|Freeway)/i; 
 
             steps.forEach((step, i) => {
-                // 去除 HTML標籤取得純文字指示 (例如: "併入<b>國道一號</b>")
                 const instructions = step.instructions.replace(/<[^>]*>/g, ""); 
                 
-                // 判斷此步驟是否在高速公路上
                 if (highwayRegex.test(instructions)) {
                     if (!isOnHighway) {
-                        // 剛進入高速公路 (紀錄進入點)
                         isOnHighway = true;
-                        // 通常進入點的指示是 "併入國道X號"，這裡我們抓取該步驟的起點位置或前一個步驟的指示
                         entryPoint = instructions; 
-                        highwayName = instructions; // 暫存路名
                     }
-                    
-                    // 累加里程
                     highwayDistance += step.distance.value;
-                    
-                    // 隨時更新最後一個點，當迴圈結束或離開高速公路時，這個點就是離開點
-                    // step.instructions 在高速公路上通常是 "繼續開在國道X號上"，直到下一個 step 是 "下出口"
                 } else {
-                    // 如果之前在高速公路上，現在不在了 -> 代表剛下了交流道
                     if (isOnHighway) {
                         isOnHighway = false;
-                        exitPoint = instructions; // 記錄 "下交流道" 的那個指令 (例如: "前往新竹的出口")
+                        exitPoint = instructions;
                     }
                 }
             });
 
-            // 顯示結果
             const resultDiv = document.getElementById("analysis-result");
             
             if (highwayDistance > 0) {
                 resultDiv.style.display = "block";
-                // 公尺轉公里
                 const km = (highwayDistance / 1000).toFixed(1);
                 
                 resultDiv.innerHTML = `
@@ -194,13 +203,11 @@
                 `;
             } else {
                 resultDiv.style.display = "block";
-                resultDiv.innerHTML = "<h4>🛣️ 一般道路</h4><p>此路線未偵測到主要行駛國道 (或路徑過短)。</p>";
+                resultDiv.innerHTML = "<h4>🛣️ 一般道路</h4><p>此路線未偵測到主要行駛國道。</p>";
             }
         }
 
-        // 啟動地圖
         window.onload = initMap;
-
     </script>
 </body>
 </html>
