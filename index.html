@@ -2,27 +2,39 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>國道里程計算器</title>
+    <title>國道里程與交流道計算器</title>
     <style>
-        body { font-family: "Microsoft JhengHei", sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
-        .input-group { margin-bottom: 15px; display: flex; gap: 10px; }
-        input { padding: 10px; flex: 1; border: 1px solid #ccc; border-radius: 4px; }
-        button { padding: 10px 20px; background-color: #28a745; color: white; border: none; cursor: pointer; border-radius: 4px; }
-        button:hover { background-color: #218838; }
+        body { font-family: "Microsoft JhengHei", sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; background-color: #f4f4f4; }
+        h2 { text-align: center; color: #333; }
+        
+        .input-group { margin-bottom: 15px; display: flex; gap: 10px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        input { padding: 12px; flex: 1; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; }
+        button { padding: 10px 25px; background-color: #007bff; color: white; border: none; cursor: pointer; border-radius: 4px; font-size: 16px; font-weight: bold; }
+        button:hover { background-color: #0056b3; }
         
         /* 版面配置 */
         #container { display: flex; gap: 20px; height: 500px; margin-top: 20px; }
-        #selection-panel { width: 30%; overflow-y: auto; border-right: 1px solid #eee; padding-right: 10px; }
-        #map { width: 70%; background-color: #eee; height: 100%; border-radius: 4px; }
+        #selection-panel { width: 35%; overflow-y: auto; background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); padding: 10px; }
+        #map { width: 65%; background-color: #eee; height: 100%; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
 
         /* 路線按鈕樣式 */
-        .route-btn { display: block; width: 100%; padding: 15px; margin-bottom: 10px; background: #f8f9fa; border: 1px solid #ddd; text-align: left; cursor: pointer; border-radius: 5px; }
-        .route-btn:hover { background: #e2e6ea; }
-        .route-btn.active { background: #d4edda; border-color: #c3e6cb; }
+        .route-btn { display: block; width: 100%; padding: 12px; margin-bottom: 8px; background: #fff; border: 1px solid #ddd; text-align: left; cursor: pointer; border-radius: 5px; transition: all 0.2s; }
+        .route-btn:hover { background: #f0f0f0; border-color: #aaa; }
+        .route-btn.active { background: #e8f0fe; border-color: #007bff; color: #0056b3; border-left: 5px solid #007bff; }
 
         /* 分析結果區塊 */
-        #analysis-result { margin-top: 20px; padding: 15px; background: #fff3cd; border: 1px solid #ffeeba; display: none; border-radius: 5px; }
-        .highlight { color: #d9534f; font-weight: bold; }
+        #analysis-result { margin-top: 20px; padding: 20px; background: #fff; border-left: 6px solid #28a745; display: none; border-radius: 5px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 10px; }
+        .result-item { background: #f9f9f9; padding: 10px; border-radius: 5px; }
+        .result-label { font-size: 0.9em; color: #666; font-weight: bold; }
+        .result-value { font-size: 1.1em; color: #333; margin-top: 5px; }
+        .highlight { color: #d9534f; font-weight: bold; font-size: 1.2em; }
+        
+        /* 交流道資訊樣式 */
+        .ic-info { margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px; }
+        .ic-step { display: flex; align-items: flex-start; margin-bottom: 8px; }
+        .ic-icon { min-width: 24px; color: #28a745; font-weight: bold; margin-right: 8px; }
+        .ic-text { color: #555; line-height: 1.4; }
     </style>
 </head>
 <body>
@@ -31,7 +43,7 @@
     
     <div class="input-group">
         <input type="text" id="start" placeholder="請輸入起點 (例如: 台北101)">
-        <input type="text" id="end" placeholder="請輸入終點 (例如: 台中火車站)">
+        <input type="text" id="end" placeholder="請輸入終點 (例如: 高雄火車站)">
         <button onclick="calculateRoute()">查詢路線</button>
     </div>
 
@@ -39,7 +51,7 @@
 
     <div id="container">
         <div id="selection-panel">
-            <p style="color:#666;">請先輸入地點並查詢...</p>
+            <p style="color:#666; text-align:center; margin-top: 20px;">請先輸入地點並查詢...</p>
         </div>
         <div id="map"></div>
     </div>
@@ -51,40 +63,28 @@
         let allRoutes = [];
 
         function initMap() {
-            // 1. 初始化地圖
             const taiwan = { lat: 23.6978, lng: 120.9605 };
             map = new google.maps.Map(document.getElementById("map"), {
                 zoom: 7,
-                center: taiwan
+                center: taiwan,
+                mapTypeControl: false,
+                streetViewControl: false
             });
             directionsService = new google.maps.DirectionsService();
             directionsRenderer = new google.maps.DirectionsRenderer();
             directionsRenderer.setMap(map);
 
-            // 2. ★ 新增：啟動輸入框的自動完成功能
             setupAutocomplete("start");
             setupAutocomplete("end");
         }
 
-        // 設定自動完成的輔助函式
         function setupAutocomplete(elementId) {
             const input = document.getElementById(elementId);
             const options = {
-                componentRestrictions: { country: "tw" }, // 限制只搜尋台灣範圍
-                fields: ["formatted_address", "geometry", "name"], // 只抓取需要的欄位以節省成本
+                componentRestrictions: { country: "tw" },
+                fields: ["formatted_address", "geometry", "name"],
             };
-            
-            const autocomplete = new google.maps.places.Autocomplete(input, options);
-            
-            // 當使用者從選單選取地點後，不需要做特別的事，Google 會自動把完整地址填入 input
-            // 但我們可以選擇讓地圖自動跳轉到該點 (非必要，看需求)
-            autocomplete.addListener("place_changed", () => {
-                const place = autocomplete.getPlace();
-                if (!place.geometry || !place.geometry.location) {
-                    window.alert("找不到該地點的詳細資訊: '" + place.name + "'");
-                    return;
-                }
-            });
+            new google.maps.places.Autocomplete(input, options);
         }
 
         function calculateRoute() {
@@ -111,25 +111,22 @@
                 if (status == 'OK') {
                     allRoutes = result.routes;
                     renderRouteList(result.routes);
-                    selectRoute(0, result);
+                    selectRoute(0, result); // 預設選第一條
                 } else {
-                    // 這裡可以顯示更友善的錯誤訊息
-                    if (status === 'NOT_FOUND') {
-                        alert('找不到您輸入的地點，請嘗試輸入完整地址或使用下拉選單選擇地點。');
-                    } else if (status === 'ZERO_RESULTS') {
-                        alert('這兩地之間無法規劃開車路線（可能隔海或無路可通）。');
-                    } else {
-                        alert('路徑搜尋失敗: ' + status);
-                    }
+                    handleError(status);
                 }
             });
         }
 
-        // --- 以下為原有的顯示邏輯，保持不變 ---
+        function handleError(status) {
+            if (status === 'NOT_FOUND') alert('找不到地點，請嘗試輸入完整地址。');
+            else if (status === 'ZERO_RESULTS') alert('無法規劃開車路線。');
+            else alert('查詢失敗: ' + status);
+        }
 
         function renderRouteList(routes) {
             const panel = document.getElementById("selection-panel");
-            panel.innerHTML = "<h3>請選擇路線：</h3>";
+            panel.innerHTML = "<h3 style='margin-top:0; padding-bottom:10px; border-bottom:1px solid #eee;'>建議路線</h3>";
 
             routes.forEach((route, index) => {
                 const summary = route.summary; 
@@ -138,7 +135,11 @@
 
                 const btn = document.createElement("button");
                 btn.className = "route-btn";
-                btn.innerHTML = `<strong>路線 ${index + 1} (${summary})</strong><br>總長: ${distance} / 時間: ${duration}`;
+                btn.innerHTML = `
+                    <div style="font-weight:bold; font-size:1.1em;">路線 ${index + 1}</div>
+                    <div style="color:#666; font-size:0.9em;">${summary}</div>
+                    <div style="margin-top:5px;">總長: ${distance} | 時間: ${duration}</div>
+                `;
                 btn.onclick = () => selectRoute(index);
                 panel.appendChild(btn);
             });
@@ -146,6 +147,7 @@
 
         function selectRoute(index, resultObj = null) {
             if (!resultObj) {
+                // 如果不是第一次查詢，只需重繪路線
                 directionsRenderer.setDirections({routes: allRoutes, request: {}, status: "OK"}); 
             } else {
                 directionsRenderer.setDirections(resultObj);
@@ -159,52 +161,103 @@
             analyzeHighwayDetails(allRoutes[index]);
         }
 
+        // ★★★ 核心修改邏輯在此 ★★★
         function analyzeHighwayDetails(route) {
-            const steps = route.legs[0].steps;
-            let highwayDistance = 0;
-            let entryPoint = null;
-            let exitPoint = null;
+            const leg = route.legs[0];
+            const steps = leg.steps;
+            
+            // 1. 基本數據
+            const totalDistanceText = leg.distance.text; // 全程總距離 (例如: "158 公里")
+            const totalDurationText = leg.duration.text; // 全程總時間
+            
+            let highwayDistanceVal = 0;
+            let entryInstruction = null; // 上交流道指示
+            let exitInstruction = null;  // 下交流道指示
             let isOnHighway = false;
 
-            // 稍微增強 Regex，避免漏抓 "National Freeway"
-            const highwayRegex = /(國道|高速公路|Freeway)/i; 
+            // 定義國道關鍵字
+            const highwayRegex = /(國道|高速公路|Freeway|System|Expressway)/i; 
 
             steps.forEach((step, i) => {
-                const instructions = step.instructions.replace(/<[^>]*>/g, ""); 
+                // 移除 HTML 標籤以取得純文字指示
+                const rawInstruction = step.instructions;
+                const cleanInstruction = rawInstruction.replace(/<[^>]*>/g, ""); 
                 
-                if (highwayRegex.test(instructions)) {
+                if (highwayRegex.test(cleanInstruction)) {
+                    // --- 進入國道 ---
                     if (!isOnHighway) {
                         isOnHighway = true;
-                        entryPoint = instructions; 
+                        // 通常"上交流道"的指示會在進入國道的那一步，或者前一步的"Merge onto..."
+                        // 我們抓取當前這一步的指示作為起點
+                        entryInstruction = cleanInstruction;
                     }
-                    highwayDistance += step.distance.value;
+                    
+                    // 累加國道里程
+                    highwayDistanceVal += step.distance.value;
+                    
+                    // 持續更新"最後一個國道步驟"，預設它可能是出口
+                    // 但更準確的是抓取"離開國道"的那一刻
                 } else {
+                    // --- 離開國道 ---
                     if (isOnHighway) {
                         isOnHighway = false;
-                        exitPoint = instructions;
+                        // 剛離開國道的那一步，通常包含"Take exit..."或"前往..."
+                        exitInstruction = cleanInstruction;
                     }
                 }
             });
 
+            // 顯示結果
             const resultDiv = document.getElementById("analysis-result");
-            
-            if (highwayDistance > 0) {
-                resultDiv.style.display = "block";
-                const km = (highwayDistance / 1000).toFixed(1);
-                
-                resultDiv.innerHTML = `
-                    <h4>🛣️ 高速公路分析結果</h4>
-                    <p>此路線經過高速公路路段：<span class="highlight">${km} 公里</span></p>
-                    <ul>
-                        <li><strong>進入點指示：</strong> ${entryPoint || "起點即在高速公路上"}</li>
-                        <li><strong>離開點指示：</strong> ${exitPoint || "終點仍在高速公路上"}</li>
-                    </ul>
-                    <small>* 註：此為地圖路徑推算，與實際 eTag 收費門架里程可能不同。</small>
+            resultDiv.style.display = "block";
+
+            let highwayHtml = "";
+            let highwayKm = (highwayDistanceVal / 1000).toFixed(1);
+
+            if (highwayDistanceVal > 0) {
+                // 處理顯示文字，若太長可以截斷
+                const entryText = entryInstruction || "起點即在高速公路上";
+                const exitText = exitInstruction || "終點仍在高速公路上";
+
+                highwayHtml = `
+                    <div class="result-grid">
+                        <div class="result-item">
+                            <div class="result-label">🏁 全程總距離</div>
+                            <div class="result-value">${totalDistanceText}</div>
+                        </div>
+                         <div class="result-item" style="background:#e8f5e9;">
+                            <div class="result-label">🛣️ 國道/高架里程</div>
+                            <div class="result-value highlight">${highwayKm} km</div>
+                        </div>
+                    </div>
+
+                    <div class="ic-info">
+                        <div class="ic-step">
+                            <span class="ic-icon">⬆️ 上</span>
+                            <span class="ic-text"><strong>進入點/交流道：</strong><br>${entryText}</span>
+                        </div>
+                        <div class="ic-step">
+                            <span class="ic-icon">⬇️ 下</span>
+                            <span class="ic-text"><strong>離開點/交流道：</strong><br>${exitText}</span>
+                        </div>
+                    </div>
                 `;
             } else {
-                resultDiv.style.display = "block";
-                resultDiv.innerHTML = "<h4>🛣️ 一般道路</h4><p>此路線未偵測到主要行駛國道。</p>";
+                highwayHtml = `
+                    <div class="result-grid">
+                        <div class="result-item">
+                            <div class="result-label">🏁 全程總距離</div>
+                            <div class="result-value">${totalDistanceText}</div>
+                        </div>
+                         <div class="result-item">
+                            <div class="result-label">🛣️ 道路類型</div>
+                            <div class="result-value">平面道路 (無國道)</div>
+                        </div>
+                    </div>
+                `;
             }
+
+            resultDiv.innerHTML = `<h4>📊 路線分析詳情</h4>${highwayHtml}`;
         }
 
         window.onload = initMap;
