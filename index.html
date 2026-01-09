@@ -1,1257 +1,206 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>學校差旅費計算系統</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-    
+    <title>國道里程計算器</title>
     <style>
-        body {
-            font-family: 'Inter', 'Noto Sans TC', sans-serif;
-            background-color: #f0f4f8;
-        }
-        .custom-btn {
-            transition: all 0.2s ease-in-out;
-        }
-        .custom-btn:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-        input[type=number]::-webkit-inner-spin-button,
-        input[type=number]::-webkit-outer-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
-        }
-        input[type=number] {
-            -moz-appearance: textfield;
-        }
-        .table-container {
-            overflow-x: auto;
-        }
-        #results-preview {
-            transition: all 0.3s ease-in-out;
-            max-height: 0;
-            overflow: hidden;
-            opacity: 0;
-        }
-        #results-preview.show {
-            max-height: 1000px;
-            opacity: 1;
-        }
-        /* 報表 Modal 樣式 */
-        #report-modal-content table,
-        #report-modal-content th,
-        #report-modal-content td {
-            border: 1px solid black;
-        }
-        /* Leaflet 地圖層級修正 */
-        .leaflet-pane { z-index: 10 !important; }
-        .leaflet-top, .leaflet-bottom { z-index: 20 !important; }
+        body { font-family: "Microsoft JhengHei", sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+        .input-group { margin-bottom: 15px; display: flex; gap: 10px; }
+        input { padding: 10px; flex: 1; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 10px 20px; background-color: #28a745; color: white; border: none; cursor: pointer; border-radius: 4px; }
+        button:hover { background-color: #218838; }
         
-        /* 地圖游標樣式 */
-        .cursor-crosshair {
-            cursor: crosshair !important;
-        }
+        /* 版面配置 */
+        #container { display: flex; gap: 20px; height: 500px; margin-top: 20px; }
+        #selection-panel { width: 30%; overflow-y: auto; border-right: 1px solid #eee; padding-right: 10px; }
+        #map { width: 70%; background-color: #eee; height: 100%; border-radius: 4px; }
 
-        @media print {
-          @page {
-            size: A4 portrait;
-            margin: 1cm;
-          }
-          html, body {
-            margin: 0 !important;
-            padding: 0 !important;
-            background: white !important;
-            width: auto !important;
-            height: auto !important;
-            overflow: visible !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          body > *:not(#report-modal) {
-            display: none !important;
-            visibility: hidden !important;
-          }
-          #report-modal {
-            display: block !important;
-            visibility: visible !important;
-            position: relative !important;
-            background: none !important;
-            width: 100% !important;
-            height: auto !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            border: none !important;
-            box-shadow: none !important;
-            inset: auto !important;
-            max-width: none !important;
-            max-height: none !important;
-            overflow: visible !important;
-          }
-           #report-modal > div {
-                 visibility: visible !important;
-                 display: block !important;
-                 box-shadow: none !important;
-                 border: none !important;
-                 padding: 0 !important;
-                 margin: 0 !important;
-                 max-width: none !important;
-                 max-height: none !important;
-                 width: 100% !important;
-                 height: auto !important;
-                 overflow: visible !important;
-             }
-          #report-modal-content {
-            display: block !important;
-            visibility: visible !important;
-            width: 100% !important;
-            height: auto !important;
-            font-size: 10pt;
-            line-height: 1.4;
-            border: none !important;
-            box-shadow: none !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            overflow: visible !important;
-          }
-           #report-modal-content h2 { font-size: 14pt; margin-bottom: 0.5em; }
-           #report-modal-content h3 { font-size: 12pt; margin-bottom: 0.5em; }
+        /* 路線按鈕樣式 */
+        .route-btn { display: block; width: 100%; padding: 15px; margin-bottom: 10px; background: #f8f9fa; border: 1px solid #ddd; text-align: left; cursor: pointer; border-radius: 5px; }
+        .route-btn:hover { background: #e2e6ea; }
+        .route-btn.active { background: #d4edda; border-color: #c3e6cb; }
 
-          #report-print-btn, #report-close-btn {
-            display: none !important;
-          }
-
-           #report-modal-content table {
-                font-size: 9pt;
-                width: 100%;
-                border-collapse: collapse;
-                table-layout: auto;
-                page-break-inside: auto;
-            }
-             #report-modal-content th, #report-modal-content td {
-                 padding: 2px 4px;
-                 word-wrap: break-word;
-                 height: auto !important;
-            }
-          #report-modal-content tr {
-            page-break-inside: avoid;
-            page-break-after: auto;
-             height: auto !important;
-          }
-           #report-modal-content tfoot tr:last-child td {
-                 min-height: 4em;
-                 vertical-align: top;
-            }
-             #report-modal-content div:last-of-type {
-                  page-break-before: avoid !important;
-                  margin-top: 1em;
-             }
-        }
+        /* 分析結果區塊 */
+        #analysis-result { margin-top: 20px; padding: 15px; background: #fff3cd; border: 1px solid #ffeeba; display: none; border-radius: 5px; }
+        .highlight { color: #d9534f; font-weight: bold; }
     </style>
 </head>
-<body class="p-4 bg-gray-100 flex flex-col min-h-screen">
+<body>
 
-    <div id="capture-area" class="w-full max-w-5xl mx-auto bg-white rounded-2xl shadow-xl p-6 md:p-8">
-        
-        <header class="text-center mb-6">
-            <h1 id="main-title" class="text-2xl md:text-3xl font-bold text-gray-800">
-                差旅費紀錄系統
-            </h1>
-            <p class="text-gray-500 mt-2">使用 OpenStreetMap 開放資料</p>
-        </header>
-
-        <main>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                <div class="space-y-4">
-                     <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label for="travel-date" class="block text-sm font-medium text-gray-700 mb-1">出差日期</label>
-                            <input type="date" id="travel-date" class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        </div>
-                        <div>
-                            <label for="description" class="block text-sm font-medium text-gray-700 mb-1">事由 / 說明</label>
-                            <input type="text" id="description" placeholder="例如：參加○○研習" class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        </div>
-                    </div>
-                    
-                    <div class="pt-2">
-                         <div class="flex items-center">
-                            <input id="from-home-toggle" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                            <label for="from-home-toggle" class="ml-2 block text-sm font-medium text-gray-900">是否從自家出發？</label>
-                        </div>
-                    </div>
-
-                    <div class="bg-blue-50 p-3 rounded-md border border-blue-200 text-sm text-blue-800 mb-2">
-                        <strong>💡 提示：</strong> 若找不到地址，請在地圖上直接點擊選點。
-                    </div>
-
-                    <p class="text-sm font-bold text-gray-600 bg-gray-100 p-2 rounded-md">第一段路程</p>
-                    <div class="relative">
-                        <label for="start" class="block text-sm font-medium text-gray-700 mb-1">起點</label>
-                        <div class="flex gap-2">
-                             <input type="text" id="start" placeholder="請輸入地址" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                             <input type="hidden" id="start-lat">
-                             <input type="hidden" id="start-lng">
-                        </div>
-                        <p id="start-status" class="text-xs text-gray-500 mt-1">預設：學校</p>
-                    </div>
-                    <div class="relative">
-                        <label for="end" class="block text-sm font-medium text-gray-700 mb-1">終點</label>
-                        <div class="flex gap-2">
-                            <input type="text" id="end" placeholder="請輸入地址" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <input type="hidden" id="end-lat">
-                            <input type="hidden" id="end-lng">
-                        </div>
-                        <p id="end-status" class="text-xs text-gray-500 mt-1">尚未設定</p>
-                    </div>
-                    
-                    <fieldset>
-                        <legend class="block text-sm font-medium text-gray-700 mb-2">交通工具</legend>
-                        <div class="flex items-center space-x-4">
-                            <div class="flex items-center">
-                                <input id="car" name="vehicle" type="radio" value="car" class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500" checked>
-                                <label for="car" class="ml-2 block text-sm text-gray-900">汽車 (3元/公里)</label>
-                            </div>
-                            <div class="flex items-center">
-                                <input id="motorcycle" name="vehicle" type="radio" value="motorcycle" class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
-                                <label for="motorcycle" class="ml-2 block text-sm text-gray-900">機車 (2元/公里)</label>
-                            </div>
-                        </div>
-                    </fieldset>
-
-                    <div class="pt-2 flex flex-wrap gap-x-6 gap-y-2">
-                        <div class="flex items-center">
-                            <input id="out-of-county-toggle" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                            <label for="out-of-county-toggle" class="ml-2 block text-sm font-medium text-gray-900">是否搭乘火車或高鐵？</label>
-                        </div>
-                        <div class="flex items-center">
-                            <input id="misc-fee-toggle" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                            <label for="misc-fee-toggle" class="ml-2 block text-sm font-medium text-gray-900">是否申請雜費？</label>
-                        </div>
-                    </div>
-
-                    <div id="out-of-county-section" class="hidden space-y-4 pt-4 border-t border-gray-200">
-                         <p class="text-sm font-bold text-gray-600 bg-gray-100 p-2 rounded-md">第二段路程 (車站到目的地)</p>
-                         <div>
-                            <label for="start2" class="block text-sm font-medium text-gray-700 mb-1">第二段起點</label>
-                            <input type="text" id="start2" placeholder="請輸入第二段起點 (如: 台中高鐵)" class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <input type="hidden" id="start2-lat">
-                            <input type="hidden" id="start2-lng">
-                             <p id="start2-status" class="text-xs text-gray-500 mt-1">尚未設定</p>
-                        </div>
-                        <div>
-                            <label for="end2" class="block text-sm font-medium text-gray-700 mb-1">第二段終點</label>
-                            <input type="text" id="end2" placeholder="請輸入第二段終點" class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                             <input type="hidden" id="end2-lat">
-                             <input type="hidden" id="end2-lng">
-                             <p id="end2-status" class="text-xs text-gray-500 mt-1">尚未設定</p>
-                        </div>
-                        <hr>
-                         <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label for="hsr-cost" class="block text-sm font-medium text-gray-700 mb-1">高鐵費用 (往返)</label>
-                                <div class="relative"><span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">NT$</span>
-                                    <input type="number" id="hsr-cost" value="0" min="0" class="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                </div>
-                            </div>
-                            <div>
-                                <label for="train-cost" class="block text-sm font-medium text-gray-700 mb-1">火車費用 (往返)</label>
-                                <div class="relative"><span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">NT$</span>
-                                    <input type="number" id="train-cost" value="0" min="0" class="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div id="misc-fee-section" class="hidden pt-4 border-t border-gray-200">
-                         <div>
-                            <label for="misc-fee-cost" class="block text-sm font-medium text-gray-700 mb-1">雜費金額</label>
-                            <div class="relative"><span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">NT$</span>
-                                <input type="number" id="misc-fee-cost" value="0" min="0" class="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="action-buttons" class="flex space-x-2 pt-2">
-                         <button id="calculate-btn" class="w-full bg-blue-600 text-white font-bold py-2.5 px-4 rounded-lg shadow-md hover:bg-blue-700 custom-btn">計算差旅費</button>
-                         <button id="add-record-btn" class="hidden w-1/2 bg-green-600 text-white font-bold py-2.5 px-4 rounded-lg shadow-md hover:bg-green-700 custom-btn">加入紀錄</button>
-                         <button id="modify-btn" class="hidden w-1/2 bg-gray-500 text-white font-bold py-2.5 px-4 rounded-lg shadow-md hover:bg-gray-600 custom-btn">修改資料</button>
-                    </div>
-                </div>
-
-                <div class="w-full h-full space-y-4">
-                    <div id="map1-container" class="w-full rounded-lg bg-gray-200" style="height: 350px;">
-                        <div class="h-full flex flex-col"><p class="text-sm font-semibold text-gray-700 bg-gray-100 p-2 rounded-t-lg flex justify-between items-center">
-                            第一段路程地圖 <span class="text-xs font-normal text-gray-500">(在地圖上點擊可設點)</span>
-                        </p>
-                            <div id="map" class="w-full h-full rounded-b-lg z-0 cursor-crosshair"></div>
-                        </div>
-                    </div>
-                    <div id="map2-container" class="hidden w-full rounded-lg bg-gray-200" style="height: 350px;">
-                         <div class="h-full flex flex-col"><p class="text-sm font-semibold text-gray-700 bg-gray-100 p-2 rounded-t-lg flex justify-between items-center">
-                             第二段路程地圖 <span class="text-xs font-normal text-gray-500">(在地圖上點擊可設點)</span>
-                         </p>
-                            <div id="map2" class="w-full h-full rounded-b-lg z-0 cursor-crosshair"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div id="error-message" class="hidden mt-4 text-center text-red-600 bg-red-100 p-3 rounded-lg"></div>
-
-            <div id="results-preview" class="mt-6">
-                <div class="bg-blue-50 border-l-4 border-blue-500 text-blue-900 rounded-lg p-4">
-                    <h3 class="text-lg font-bold mb-2">費用計算預覽</h3>
-                    <div id="preview-details"></div>
-                </div>
-            </div>
-            
-            <div id="records-section" class="mt-10">
-                <div class="flex flex-wrap gap-4 justify-between items-center mb-4">
-                    <h2 class="text-xl font-bold text-gray-700">差旅紀錄列表</h2>
-                    <div class="flex flex-wrap gap-2 items-center">
-                         <div class="flex items-center gap-1 text-sm">
-                            <label for="report-roc-year">報表年份(民國):</label>
-                            <input type="number" id="report-roc-year" class="w-20 px-2 py-1 border border-gray-300 rounded-md shadow-sm text-sm">
-                            <label for="report-month-start">月份從:</label>
-                            <input type="number" id="report-month-start" min="1" max="12" class="w-16 px-2 py-1 border border-gray-300 rounded-md shadow-sm text-sm">
-                            <label for="report-month-end">至:</label>
-                            <input type="number" id="report-month-end" min="1" max="12" class="w-16 px-2 py-1 border border-gray-300 rounded-md shadow-sm text-sm">
-                        </div>
-                         <button id="generate-report-btn" class="bg-sky-500 text-white text-sm font-bold py-2 px-4 rounded-lg hover:bg-sky-600 custom-btn">產生報支清單</button>
-                        <button id="import-csv-btn" class="bg-blue-500 text-white text-sm font-bold py-2 px-4 rounded-lg hover:bg-blue-600 custom-btn">匯入CSV檔案</button>
-                        <input type="file" id="csv-import-input" accept=".csv" class="hidden">
-                        <button id="export-csv-btn" class="bg-teal-500 text-white text-sm font-bold py-2 px-4 rounded-lg hover:bg-teal-600 custom-btn">匯出CSV檔案</button>
-                        <button id="clear-records-btn" class="bg-red-500 text-white text-sm font-bold py-2 px-4 rounded-lg hover:bg-red-600 custom-btn">清除所有紀錄</button>
-                         <button id="screenshot-btn" class="bg-gray-500 text-white font-bold p-2.5 rounded-lg hover:bg-gray-600 custom-btn flex items-center justify-center" title="擷取畫面存檔">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
-                        </button>
-                    </div>
-                </div>
-                <div class="table-container bg-white rounded-lg shadow">
-                    <table class="w-full text-sm text-left text-gray-600">
-                        <thead class="text-xs text-gray-700 uppercase bg-gray-100">
-                            <tr>
-                                <th scope="col" class="py-3 px-6">日期</th>
-                                <th scope="col" class="py-3 px-6">事由</th>
-                                <th scope="col" class="py-3 px-6">路程</th>
-                                <th scope="col" class="py-3 px-6 text-right">行車交通費</th>
-                                <th scope="col" class="py-3 px-6 text-right">大眾運輸</th>
-                                <th scope="col" class="py-3 px-6 text-right">雜費</th>
-                                <th scope="col" class="py-3 px-6 text-right">小計</th>
-                                <th scope="col" class="py-3 px-6 text-center">操作</th>
-                            </tr>
-                        </thead>
-                        <tbody id="records-body">
-                           <tr class="bg-white"><td colspan="8" class="py-6 px-6 text-center text-gray-400">尚無任何紀錄</td></tr>
-                        </tbody>
-                        <tfoot class="font-semibold text-gray-800 bg-gray-200">
-                            <tr>
-                                <td colspan="7" class="py-3 px-6 text-right text-base">總計金額：</td>
-                                <td id="grand-total" class="py-3 px-6 text-right text-xl text-green-600">NT$ 0</td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-            </div>
-        </main>
-    </div>
-
-    <footer class="mt-8 mb-4 text-center text-gray-500 text-sm">
-        <p>
-            本系統由 <strong>曾明傑</strong> 設計開發 | 
-            改編自 OpenStreetMap 與 OSRM 開源資源
-        </p>
-        <p class="mt-1">
-            <a href="https://creativecommons.org/licenses/by/4.0/deed.zh_TW" target="_blank" class="underline hover:text-blue-600">
-                CC BY 4.0 創用 CC 授權
-            </a>
-            (歡迎各校自由修改使用，僅需保留原作者署名)
-        </p>
-    </footer>
-
-    <div id="report-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div class="bg-white p-6 rounded-lg shadow-xl max-w-4xl w-full max-h-full overflow-auto">
-            <div id="report-modal-content" class="text-black">
-                </div>
-             <div class="text-center mt-6 space-x-4">
-                <button id="report-print-btn" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-700 custom-btn">列印此報表</button>
-                <button id="report-close-btn" class="bg-gray-300 text-gray-800 font-bold py-2 px-6 rounded-lg hover:bg-gray-400 custom-btn">關閉</button>
-            </div>
-        </div>
-    </div>
+    <h2>🚗 國道里程與交流道查詢</h2>
     
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <div class="input-group">
+        <input type="text" id="start" placeholder="請輸入起點 (例如: 台北101)">
+        <input type="text" id="end" placeholder="請輸入終點 (例如: 台中火車站)">
+        <button onclick="calculateRoute()">查詢路線</button>
+    </div>
+
+    <div id="analysis-result"></div>
+
+    <div id="container">
+        <div id="selection-panel">
+            <p style="color:#666;">請先輸入地點並查詢...</p>
+        </div>
+        <div id="map"></div>
+    </div>
+
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCQsMxnmE1-3YCotbwGKkDhHiaPln8KwIQ&libraries=places"></script>
 
     <script>
-        // =========================================================
-        // 🏫 學校專屬設定區 (其他老師請修改這裡即可)
-        // =========================================================
-        
-        // 1. 學校名稱 (會顯示在網頁標題與報表中)
-        const SCHOOL_NAME = "苗栗縣泰興國小";
-        
-        // 2. 學校完整地址 (預設起點名稱)
-        const SCHOOL_ADDRESS = "苗栗縣泰安鄉泰興國民小學";
-        
-        // 3. 學校經緯度座標 (可在 Google Maps 上對地點按右鍵取得：左邊是lat緯度, 右邊是lng經度)
-        // 格式：{ lat: 緯度, lng: 經度 }
-        const SCHOOL_LOCATION = { 
-            lat: 24.394471705722466, 
-            lng: 120.92051292679584 
-        };
+        let map, directionsService, directionsRenderer;
+        let allRoutes = []; // 儲存 API 回傳的所有路線
 
-        // =========================================================
-        // ⚠️ 以下程式碼建議不要隨意更動，以免功能異常
-        // =========================================================
-
-        let map1, map2;
-        let routeLayer1, routeLayer2;
-        let markers = {
-            start: null,
-            end: null,
-            start2: null,
-            end2: null
-        };
-        let travelRecords = [];
-        let currentCalculation = null;
-
-        const rates = { car: 3, motorcycle: 2 };
-        
-        // Initialize maps on load
-        window.addEventListener('load', initMaps);
-
-        function initMaps() {
-            // 自動更新網頁標題與 H1
-            document.getElementById('main-title').innerText = SCHOOL_NAME + " 差旅費紀錄系統";
-            document.title = SCHOOL_NAME + " 差旅費計算系統";
-
-            // Map 1 Initialization
-            map1 = L.map('map').setView([SCHOOL_LOCATION.lat, SCHOOL_LOCATION.lng], 13);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            }).addTo(map1);
-            
-            // Add click listener to Map 1
-            map1.on('click', function(e) {
-                showMapPopup(map1, e.latlng, 'map1');
+        function initMap() {
+            // 初始化地圖中心 (台灣)
+            const taiwan = { lat: 23.6978, lng: 120.9605 };
+            map = new google.maps.Map(document.getElementById("map"), {
+                zoom: 7,
+                center: taiwan
             });
-
-            // Map 2 Initialization
-            map2 = L.map('map2').setView([24.5, 120.8], 10);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            }).addTo(map2);
-            
-            // Add click listener to Map 2
-            map2.on('click', function(e) {
-                showMapPopup(map2, e.latlng, 'map2');
-            });
-
-            // Set default start
-            document.getElementById('start').value = SCHOOL_ADDRESS;
-            setPointData('start', SCHOOL_LOCATION.lat, SCHOOL_LOCATION.lng, '已設為：' + SCHOOL_NAME + ' (預設)');
-            addMarker('start', SCHOOL_LOCATION, map1);
-
-            document.getElementById('travel-date').valueAsDate = new Date();
-
-            // Set default report date
-            const currentYear = new Date().getFullYear();
-            const currentMonth = new Date().getMonth() + 1;
-            document.getElementById('report-roc-year').value = currentYear - 1911;
-            document.getElementById('report-month-start').value = currentMonth;
-            document.getElementById('report-month-end').value = currentMonth;
-            
-            setTimeout(() => { map1.invalidateSize(); map2.invalidateSize(); }, 500);
+            directionsService = new google.maps.DirectionsService();
+            directionsRenderer = new google.maps.DirectionsRenderer();
+            directionsRenderer.setMap(map);
         }
 
-        // Popup logic to select Start or End
-        function showMapPopup(mapObj, latlng, mapId) {
-            let popupContent = document.createElement('div');
-            popupContent.className = 'text-center space-y-2 p-1';
-            
-            let btn1 = document.createElement('button');
-            btn1.className = 'block w-full bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 text-sm';
-            
-            let btn2 = document.createElement('button');
-            btn2.className = 'block w-full bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 text-sm';
+        function calculateRoute() {
+            const start = document.getElementById("start").value;
+            const end = document.getElementById("end").value;
 
-            if (mapId === 'map1') {
-                btn1.textContent = '設為起點';
-                btn1.onclick = () => { setManualLocation('start', latlng, mapObj); mapObj.closePopup(); };
-                btn2.textContent = '設為終點';
-                btn2.onclick = () => { setManualLocation('end', latlng, mapObj); mapObj.closePopup(); };
-            } else {
-                btn1.textContent = '設為第二段起點';
-                btn1.onclick = () => { setManualLocation('start2', latlng, mapObj); mapObj.closePopup(); };
-                btn2.textContent = '設為第二段終點';
-                btn2.onclick = () => { setManualLocation('end2', latlng, mapObj); mapObj.closePopup(); };
-            }
-
-            popupContent.appendChild(btn1);
-            popupContent.appendChild(btn2);
-
-            L.popup()
-                .setLatLng(latlng)
-                .setContent(popupContent)
-                .openOn(mapObj);
-        }
-
-        function setManualLocation(type, latlng, mapObj) {
-            const lat = latlng.lat;
-            const lng = latlng.lng;
-            
-            // Add or update marker
-            addMarker(type, latlng, mapObj);
-            
-            // Update hidden inputs
-            setPointData(type, lat, lng, `已手動在地圖上選點 (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
-            
-            // Update text input to indicate manual selection if empty or standard
-            const inputField = document.getElementById(type);
-            if (!inputField.value) {
-                inputField.value = `地圖選點 (${lat.toFixed(3)}, ${lng.toFixed(3)})`;
-            }
-        }
-
-        function addMarker(type, latlng, mapObj) {
-            const color = (type === 'start' || type === 'start2') ? 'blue' : 'red';
-            
-            // Remove existing marker of this type
-            if (markers[type]) {
-                mapObj.removeLayer(markers[type]);
-            }
-
-            // Create custom icon (simple colored marker)
-            const icon = new L.Icon({
-                iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${color}.png`,
-                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                iconSize: [25, 41],
-                iconAnchor: [12, 41],
-                popupAnchor: [1, -34],
-                shadowSize: [41, 41]
-            });
-
-            const marker = L.marker(latlng, { icon: icon, draggable: true }).addTo(mapObj);
-            
-            // Drag event to update coordinates
-            marker.on('dragend', function(event) {
-                const position = marker.getLatLng();
-                setPointData(type, position.lat, position.lng, `已手動在地圖上選點 (${position.lat.toFixed(4)}, ${position.lng.toFixed(4)})`);
-                if (!document.getElementById(type).value) {
-                    document.getElementById(type).value = `地圖選點 (${position.lat.toFixed(3)}, ${position.lng.toFixed(3)})`;
-                }
-            });
-
-            markers[type] = marker;
-        }
-        
-        function setPointData(type, lat, lng, statusText) {
-            document.getElementById(`${type}-lat`).value = lat;
-            document.getElementById(`${type}-lng`).value = lng;
-            const statusEl = document.getElementById(`${type}-status`);
-            if (statusEl) {
-                statusEl.textContent = statusText;
-                statusEl.className = 'text-xs text-green-600 mt-1 font-medium';
-            }
-        }
-
-        document.getElementById('calculate-btn').addEventListener('click', calculateRoute);
-        document.getElementById('add-record-btn').addEventListener('click', addRecord);
-        document.getElementById('modify-btn').addEventListener('click', modifyCalculation);
-        document.getElementById('screenshot-btn').addEventListener('click', takeScreenshot);
-        document.getElementById('clear-records-btn').addEventListener('click', clearAllRecords);
-        document.getElementById('export-csv-btn').addEventListener('click', exportToCSV);
-        document.getElementById('generate-report-btn').addEventListener('click', generateReport);
-        document.getElementById('report-print-btn').addEventListener('click', () => window.print());
-        document.getElementById('report-close-btn').addEventListener('click', () => document.getElementById('report-modal').classList.add('hidden'));
-        document.getElementById('import-csv-btn').addEventListener('click', () => document.getElementById('csv-import-input').click());
-        document.getElementById('csv-import-input').addEventListener('change', handleCSVImport);
-        
-        document.getElementById('from-home-toggle').addEventListener('change', e => {
-            const startInput = document.getElementById('start');
-            if (e.target.checked) {
-                startInput.value = '';
-                startInput.placeholder = '請填寫住家地址...';
-                // Clear manual points for start if switching
-                if (markers['start']) { map1.removeLayer(markers['start']); markers['start'] = null; }
-                document.getElementById('start-lat').value = '';
-                document.getElementById('start-lng').value = '';
-                document.getElementById('start-status').textContent = '請輸入地址或點擊地圖設定';
-            } else {
-                startInput.value = SCHOOL_ADDRESS;
-                startInput.placeholder = '請輸入起點地址';
-                setPointData('start', SCHOOL_LOCATION.lat, SCHOOL_LOCATION.lng, '已設為：' + SCHOOL_NAME + ' (預設)');
-                addMarker('start', SCHOOL_LOCATION, map1);
-                map1.setView(SCHOOL_LOCATION, 13);
-            }
-        });
-
-        document.getElementById('out-of-county-toggle').addEventListener('change', e => {
-            document.getElementById('out-of-county-section').classList.toggle('hidden', !e.target.checked);
-            const map2Container = document.getElementById('map2-container');
-            map2Container.classList.toggle('hidden', !e.target.checked);
-            if(e.target.checked) {
-                setTimeout(() => map2.invalidateSize(), 100);
-            }
-        });
-        document.getElementById('misc-fee-toggle').addEventListener('change', e => {
-            document.getElementById('misc-fee-section').classList.toggle('hidden', !e.target.checked);
-        });
-        document.getElementById('records-body').addEventListener('click', e => {
-            if (e.target.classList.contains('delete-btn')) {
-                const recordId = parseInt(e.target.dataset.id, 10);
-                deleteRecord(recordId);
-            }
-        });
-
-        // 智慧地址修正功能
-        function preprocessAddress(address) {
-            if (!address) return '';
-            
-            // 移除可能重複輸入的 "台灣"
-            let processed = address.replace(/^台灣\s*/, '').replace(/^Taiwan\s*/, '');
-            
-            // 常見口語地名 -> OSM 正式名稱對照表
-            const hsrMap = {
-                '台中高鐵': '高鐵台中站',
-                '臺中高鐵': '高鐵台中站',
-                '烏日高鐵': '高鐵台中站',
-                '新烏日高鐵': '高鐵台中站',
-                '台北高鐵': '台北車站',
-                '臺北高鐵': '台北車站',
-                '板橋高鐵': '板橋車站',
-                '桃園高鐵': '高鐵桃園站',
-                '新竹高鐵': '高鐵新竹站',
-                '六家高鐵': '高鐵新竹站',
-                '竹北高鐵': '高鐵新竹站',
-                '苗栗高鐵': '高鐵苗栗站',
-                '後龍高鐵': '高鐵苗栗站',
-                '彰化高鐵': '高鐵彰化站',
-                '田中高鐵': '高鐵彰化站',
-                '雲林高鐵': '高鐵雲林站',
-                '虎尾高鐵': '高鐵雲林站',
-                '嘉義高鐵': '高鐵嘉義站',
-                '太保高鐵': '高鐵嘉義站',
-                '台南高鐵': '高鐵台南站',
-                '臺南高鐵': '高鐵台南站',
-                '沙崙高鐵': '高鐵台南站',
-                '左營高鐵': '高鐵左營站',
-                '高雄高鐵': '高鐵左營站'
-            };
-
-            for (const [key, value] of Object.entries(hsrMap)) {
-                if (processed.includes(key)) {
-                    // 如果用戶輸入包含關鍵字，替換成正式名稱
-                    return value; 
-                }
-            }
-            return processed;
-        }
-
-        // Nominatim Geocoding
-        async function geocodeAddress(address, type) {
-            // Check if we already have manual coordinates
-            const manualLat = document.getElementById(`${type}-lat`).value;
-            const manualLng = document.getElementById(`${type}-lng`).value;
-            if (manualLat && manualLng) {
-                return { lat: parseFloat(manualLat), lng: parseFloat(manualLng) };
-            }
-
-            if (!address) return null;
-            // 檢查是否為學校地址（使用變數）
-            if (address === SCHOOL_ADDRESS || address === SCHOOL_NAME || address === '學校') {
-                return SCHOOL_LOCATION;
-            }
-            
-            try {
-                // 1. Preprocess the address to fix colloquial names
-                const fixedAddress = preprocessAddress(address);
-                
-                // 2. Construct Query
-                let query = fixedAddress;
-                // If address is simple, prepend Taiwan for context
-                if (!fixedAddress.includes('台灣') && !fixedAddress.includes('縣') && !fixedAddress.includes('市')) {
-                    query = '台灣 ' + fixedAddress;
-                }
-                
-                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
-                const data = await response.json();
-                
-                if (data && data.length > 0) {
-                    const result = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-                    // Auto-set the manual point so we can see it
-                    const mapToUse = (type === 'start' || type === 'end') ? map1 : map2;
-                    addMarker(type, result, mapToUse);
-                    // Use fixed address in status text if improved
-                    const statusText = (fixedAddress !== address) ? `已自動修正並定位: ${fixedAddress}` : '已自動找到地址位置';
-                    setPointData(type, result.lat, result.lng, statusText);
-                    return result;
-                }
-                return null;
-            } catch (e) {
-                console.error("Geocoding error:", e);
-                return null;
-            }
-        }
-
-        async function getOSRMRoute(startCoords, endCoords) {
-            try {
-                const url = `https://router.project-osrm.org/route/v1/driving/${startCoords.lng},${startCoords.lat};${endCoords.lng},${endCoords.lat}?overview=full&geometries=geojson`;
-                const response = await fetch(url);
-                const data = await response.json();
-                
-                if (data.code === 'Ok' && data.routes.length > 0) {
-                    return data.routes[0];
-                }
-                return null;
-            } catch (e) {
-                console.error("Routing error:", e);
-                return null;
-            }
-        }
-
-        async function calculateRoute() {
-            const start = document.getElementById('start').value;
-            const end = document.getElementById('end').value;
-            
-            if (!start && !document.getElementById('start-lat').value) { return showError('請輸入起點地址或在地圖上設定起點。'); }
-            if (!end && !document.getElementById('end-lat').value) { return showError('請輸入終點地址或在地圖上設定終點。'); }
-            
-            showError('');
-            const calculateBtn = document.getElementById('calculate-btn');
-            const originalBtnText = calculateBtn.innerText;
-            calculateBtn.innerText = '計算中...';
-            calculateBtn.disabled = true;
-
-            const isFromHome = document.getElementById('from-home-toggle').checked;
-            const isOutOfCounty = document.getElementById('out-of-county-toggle').checked;
-            
-            const selectedVehicle = document.querySelector('input[name="vehicle"]:checked');
-            const rate = rates[selectedVehicle.value];
-            const applyMiscFee = document.getElementById('misc-fee-toggle').checked;
-            const miscFee = applyMiscFee ? (parseInt(document.getElementById('misc-fee-cost').value, 10) || 0) : 0;
-
-            try {
-                // Geocode or get manual coords
-                const startCoords = await geocodeAddress(start, 'start');
-                const endCoords = await geocodeAddress(end, 'end');
-
-                if (!startCoords || !endCoords) {
-                    throw new Error("無法找到地址座標。請嘗試在地圖上直接點選您的位置（設為起點/終點）。");
-                }
-
-                const route1 = await getOSRMRoute(startCoords, endCoords);
-                if (!route1) throw new Error("無法計算路徑，請檢查座標點是否在可通行道路附近。");
-
-                // Clear previous route layers
-                if (routeLayer1) map1.removeLayer(routeLayer1);
-                
-                routeLayer1 = L.geoJSON(route1.geometry, {
-                    style: { color: '#3b82f6', weight: 5, opacity: 0.7 }
-                }).addTo(map1);
-                map1.fitBounds(routeLayer1.getBounds(), { padding: [50, 50] });
-
-                const distance1_km = route1.distance / 1000;
-                const cost1 = Math.round(distance1_km * rate * 2);
-
-                const hsrCost = parseInt(document.getElementById('hsr-cost').value, 10) || 0;
-                const trainCost = parseInt(document.getElementById('train-cost').value, 10) || 0;
-
-                currentCalculation = {
-                    id: Date.now(),
-                    date: document.getElementById('travel-date').value,
-                    description: document.getElementById('description').value || '未填寫事由',
-                    isFromHome,
-                    vehicle: selectedVehicle.id === 'car' ? '汽車' : '機車',
-                    rate: rate,
-                    leg1: { start, end, distance: distance1_km, cost: cost1 },
-                    leg2: null,
-                    hsrCost: hsrCost,
-                    trainCost: trainCost,
-                    publicTransportCost: hsrCost + trainCost, // Compatibility
-                    miscFee: miscFee,
-                };
-                
-                if (isOutOfCounty) {
-                    const start2 = document.getElementById('start2').value;
-                    const end2 = document.getElementById('end2').value;
-                    
-                    // Only process if user actually input something for leg 2
-                    if (start2 || end2 || document.getElementById('start2-lat').value || document.getElementById('end2-lat').value) {
-                         const start2Coords = await geocodeAddress(start2, 'start2');
-                         const end2Coords = await geocodeAddress(end2, 'end2');
-
-                        if (start2Coords && end2Coords) {
-                            const route2 = await getOSRMRoute(start2Coords, end2Coords);
-                            if (route2) {
-                                if (routeLayer2) map2.removeLayer(routeLayer2);
-                                routeLayer2 = L.geoJSON(route2.geometry, {
-                                    style: { color: '#ef4444', weight: 5, opacity: 0.7 }
-                                }).addTo(map2);
-                                map2.fitBounds(routeLayer2.getBounds(), { padding: [50, 50] });
-
-                                const distance2_km = route2.distance / 1000;
-                                const cost2 = Math.round(distance2_km * rate * 2);
-                                currentCalculation.leg2 = { start: start2, end: end2, distance: distance2_km, cost: cost2 };
-                            }
-                        } else {
-                             // Only warn if they tried to set points but failed
-                             console.warn("Could not geocode leg 2 addresses fully");
-                        }
-                    }
-                } else {
-                     if (routeLayer2) map2.removeLayer(routeLayer2);
-                }
-                
-                const totalCost = calculateTotalCost(currentCalculation);
-                currentCalculation.totalCost = totalCost;
-
-                displayPreview(currentCalculation);
-                document.getElementById('calculate-btn').classList.add('hidden');
-                document.getElementById('add-record-btn').classList.remove('hidden');
-                document.getElementById('modify-btn').classList.remove('hidden');
-
-            } catch (error) {
-                showError('發生錯誤: ' + error.message);
-                currentCalculation = null;
-            } finally {
-                calculateBtn.innerText = originalBtnText;
-                calculateBtn.disabled = false;
-            }
-        }
-
-        function displayPreview(calc) {
-            const previewDetails = document.getElementById('preview-details');
-            let content = '<div class="space-y-2">';
-            content += `
-                <div class="p-2 bg-white/60 rounded-md">
-                    <div class="flex justify-between items-center">
-                        <span class="font-medium text-gray-800">第一段路程費用 (${calc.vehicle})</span>
-                        <span class="font-bold text-blue-700">NT$ ${calc.leg1.cost.toLocaleString()}</span>
-                    </div>
-                    <div class="text-xs text-gray-500 text-right">
-                        (${calc.leg1.distance.toFixed(2)}公里 x 2趟) x ${calc.rate}元/公里
-                    </div>
-                </div>`;
-            if (calc.leg2) {
-                 content += `
-                    <div class="p-2 bg-white/60 rounded-md">
-                        <div class="flex justify-between items-center">
-                            <span class="font-medium text-gray-800">第二段路程費用 (${calc.vehicle})</span>
-                            <span class="font-bold text-blue-700">NT$ ${calc.leg2.cost.toLocaleString()}</span>
-                        </div>
-                        <div class="text-xs text-gray-500 text-right">
-                            (${calc.leg2.distance.toFixed(2)}公里 x 2趟) x ${calc.rate}元/公里
-                        </div>
-                    </div>`;
-            }
-            if (calc.hsrCost > 0) {
-                content += `
-                    <div class="p-2 bg-white/60 rounded-md">
-                        <div class="flex justify-between items-center">
-                            <span class="font-medium text-gray-800">高鐵費用</span>
-                            <span class="font-bold text-blue-700">NT$ ${calc.hsrCost.toLocaleString()}</span>
-                        </div>
-                    </div>`;
-            }
-            if (calc.trainCost > 0) {
-                content += `
-                    <div class="p-2 bg-white/60 rounded-md">
-                        <div class="flex justify-between items-center">
-                            <span class="font-medium text-gray-800">火車費用</span>
-                            <span class="font-bold text-blue-700">NT$ ${calc.trainCost.toLocaleString()}</span>
-                        </div>
-                    </div>`;
-            }
-             if (calc.miscFee > 0) {
-                content += `
-                    <div class="p-2 bg-white/60 rounded-md">
-                        <div class="flex justify-between items-center">
-                            <span class="font-medium text-gray-800">雜費</span>
-                            <span class="font-bold text-blue-700">NT$ ${calc.miscFee.toLocaleString()}</span>
-                        </div>
-                    </div>`;
-            }
-            content += `
-                <div class="text-right border-t border-blue-200 pt-2 mt-2">
-                    <p class="text-sm font-semibold">費用總計</p>
-                    <p class="text-xl font-bold text-green-600">NT$ ${calc.totalCost.toLocaleString()}</p>
-                </div>`;
-            content += '</div>';
-            previewDetails.innerHTML = content;
-            document.getElementById('results-preview').classList.add('show');
-        }
-        
-        function addRecord() {
-            if (!currentCalculation) return;
-            travelRecords.push(currentCalculation);
-            renderRecords();
-            clearInputFields();
-            resetActionButtons();
-        }
-
-        function modifyCalculation() {
-            document.getElementById('results-preview').classList.remove('show');
-            resetActionButtons();
-            currentCalculation = null;
-        }
-
-        function resetActionButtons() {
-            document.getElementById('calculate-btn').classList.remove('hidden');
-            document.getElementById('add-record-btn').classList.add('hidden');
-            document.getElementById('modify-btn').classList.add('hidden');
-        }
-        
-        function calculateTotalCost(record) {
-             return record.leg1.cost + (record.leg2 ? record.leg2.cost : 0) + (record.hsrCost || 0) + (record.trainCost || 0) + record.miscFee;
-        }
-
-        function simplifyAddress(address, isFromHome = false) {
-            if (isFromHome) return '自家';
-            if (!address) return '';
-            if (address.includes('地圖選點')) return '地圖選點';
-            // 使用變數進行判斷
-            if (address === SCHOOL_ADDRESS) return SCHOOL_NAME;
-            const parts = address.split(/[,0-9]/);
-            return parts[0].trim();
-        }
-
-
-        function renderRecords() {
-            const recordsBody = document.getElementById('records-body');
-            const grandTotalCell = document.getElementById('grand-total');
-            recordsBody.innerHTML = '';
-
-            if (travelRecords.length === 0) {
-                recordsBody.innerHTML = `<tr class="bg-white"><td colspan="8" class="py-6 px-6 text-center text-gray-400">尚無任何紀錄</td></tr>`;
-                grandTotalCell.textContent = 'NT$ 0';
+            if (!start || !end) {
+                alert("請輸入起點和終點！");
                 return;
             }
 
-            let grandTotal = 0;
-            travelRecords.forEach(record => {
-                grandTotal += record.totalCost;
-                const row = document.createElement('tr');
-                row.className = 'bg-white border-b hover:bg-gray-50';
-
-                const startDisplay = simplifyAddress(record.leg1.start, record.isFromHome);
-                const endDisplay = simplifyAddress(record.leg1.end);
-
-                let routeHtml = `<div>${startDisplay} → ${endDisplay}</div>`;
-                if (record.leg2 && record.leg2.start) {
-                     routeHtml += `<div class="text-xs text-gray-500 mt-1">${simplifyAddress(record.leg2.start)} → ${simplifyAddress(record.leg2.end)}</div>`;
+            const request = {
+                origin: start,
+                destination: end,
+                travelMode: 'DRIVING',
+                provideRouteAlternatives: true, // 關鍵：允許回傳多條路線
+                drivingOptions: {
+                    departureTime: new Date(), // 考慮即時路況 (部分地區有效)
+                    trafficModel: 'bestguess'
                 }
-                const drivingCost = record.leg1.cost + (record.leg2 ? record.leg2.cost : 0);
-                const publicTransportSum = (record.hsrCost || 0) + (record.trainCost || 0);
-
-                row.innerHTML = `
-                    <td class="py-4 px-6">${record.date}</td>
-                    <td class="py-4 px-6 font-medium text-gray-900">${record.description}</td>
-                    <td class="py-4 px-6">${routeHtml}</td>
-                    <td class="py-4 px-6 text-right">${drivingCost.toLocaleString()}</td>
-                    <td class="py-4 px-6 text-right" title="高鐵:${record.hsrCost || 0}, 火車:${record.trainCost || 0}">${publicTransportSum.toLocaleString()}</td>
-                    <td class="py-4 px-6 text-right">${(record.miscFee || 0).toLocaleString()}</td>
-                    <td class="py-4 px-6 text-right font-semibold">${record.totalCost.toLocaleString()}</td>
-                    <td class="py-4 px-6 text-center">
-                        <button class="delete-btn text-red-500 hover:text-red-700 text-xs" data-id="${record.id}">刪除</button>
-                    </td>
-                `;
-                recordsBody.appendChild(row);
-            });
-            grandTotalCell.textContent = `NT$ ${grandTotal.toLocaleString()}`;
-        }
-        
-        function deleteRecord(recordId) {
-            travelRecords = travelRecords.filter(r => r.id !== recordId);
-            renderRecords();
-        }
-
-        function clearAllRecords() {
-            travelRecords = [];
-            renderRecords();
-        }
-
-        function clearInputFields() {
-            document.getElementById('description').value = '';
-            document.getElementById('end').value = '';
-            document.getElementById('start2').value = '';
-            document.getElementById('end2').value = '';
-            
-            // Clear coordinates and status texts
-            ['start', 'end', 'start2', 'end2'].forEach(type => {
-                 if (type !== 'start') { // Don't clear start value if it's default
-                     document.getElementById(type).value = '';
-                 }
-                 if(type !== 'start' || document.getElementById('from-home-toggle').checked) {
-                     // Only clear start coords if from home
-                     document.getElementById(`${type}-lat`).value = '';
-                     document.getElementById(`${type}-lng`).value = '';
-                     const status = document.getElementById(`${type}-status`);
-                     if(status) status.textContent = '尚未設定';
-                 }
-            });
-            
-            // Reset map markers (except start default)
-            for(let key in markers) {
-                if(key !== 'start' && markers[key]) {
-                    if (key === 'start' || key === 'end') map1.removeLayer(markers[key]);
-                    else map2.removeLayer(markers[key]);
-                    markers[key] = null;
-                }
-            }
-            
-            document.getElementById('hsr-cost').value = '0';
-            document.getElementById('train-cost').value = '0';
-            document.getElementById('out-of-county-toggle').checked = false;
-            document.getElementById('out-of-county-section').classList.add('hidden');
-            document.getElementById('misc-fee-toggle').checked = false;
-            document.getElementById('misc-fee-section').classList.add('hidden');
-            document.getElementById('misc-fee-cost').value = '0';
-            document.getElementById('from-home-toggle').checked = false;
-            
-            // Reset default start to Config Variable
-            document.getElementById('start').value = SCHOOL_ADDRESS;
-            document.getElementById('start-lat').value = SCHOOL_LOCATION.lat;
-            document.getElementById('start-lng').value = SCHOOL_LOCATION.lng;
-            document.getElementById('start-status').textContent = '已設為：' + SCHOOL_NAME + ' (預設)';
-            addMarker('start', SCHOOL_LOCATION, map1);
-
-            document.getElementById('map2-container').classList.add('hidden');
-            document.getElementById('travel-date').valueAsDate = new Date();
-            document.getElementById('results-preview').classList.remove('show');
-            currentCalculation = null;
-            
-            if (routeLayer1) map1.removeLayer(routeLayer1);
-            if (routeLayer2) map2.removeLayer(routeLayer2);
-        }
-        
-        function exportToCSV() {
-            if (travelRecords.length === 0) return alert('沒有紀錄可供匯出。');
-            const headers = [
-                'id', 'date', 'description', 'isFromHome', 'vehicle', 'rate',
-                'leg1_start', 'leg1_end', 'leg1_distance', 'leg1_cost',
-                'leg2_start', 'leg2_end', 'leg2_distance', 'leg2_cost',
-                'hsrCost', 'trainCost', 'miscFee', 'totalCost'
-            ];
-            let csvContent = "data:text/csv;charset=utf-8,\uFEFF" + headers.join(',') + '\n';
-            travelRecords.forEach(r => {
-                const leg2 = r.leg2 || {};
-                const row = [
-                    r.id, r.date, `"${r.description}"`, r.isFromHome, r.vehicle, r.rate,
-                    `"${r.leg1.start}"`, `"${r.leg1.end}"`, r.leg1.distance, r.leg1.cost,
-                    `"${leg2.start || ''}"`, `"${leg2.end || ''}"`, leg2.distance || 0, leg2.cost || 0,
-                    r.hsrCost || 0, r.trainCost || 0, r.miscFee || 0, r.totalCost
-                ].join(',');
-                csvContent += row + '\n';
-            });
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            const currentDate = new Date().toISOString().slice(0, 10);
-            link.setAttribute("download", `差旅費用紀錄-${currentDate}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-
-        function handleCSVImport(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const text = e.target.result;
-                const lines = text.split('\n').filter(line => line.trim() !== '');
-                if (lines.length <= 1) { showError('檔案為空或格式不符。'); return; }
-                const headers = lines[0].split(',').map(h => h.trim());
-                const headerMap = headers.reduce((obj, h, i) => { obj[h] = i; return obj; }, {});
-                if (!('id' in headerMap && 'totalCost' in headerMap)) { showError('匯入失敗：CSV 檔案缺少必要欄位。'); return; }
-
-                const importedRecords = [];
-                try {
-                    for (let i = 1; i < lines.length; i++) {
-                        const values = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/^"|"$/g, ''));
-                        if (values.length !== headers.length) continue;
-                        
-                        // Handle legacy "publicTransportCost"
-                        const legacyPublic = parseInt(values[headerMap['publicTransportCost']], 10) || 0;
-                        
-                        const record = {
-                            id: parseInt(values[headerMap['id']], 10) || Date.now() + i,
-                            date: values[headerMap['date']],
-                            description: values[headerMap['description']],
-                            isFromHome: values[headerMap['isFromHome']]?.toLowerCase() === 'true',
-                            vehicle: values[headerMap['vehicle']] || 'car',
-                            rate: parseFloat(values[headerMap['rate']]) || 3,
-                            leg1: {
-                                start: values[headerMap['leg1_start']],
-                                end: values[headerMap['leg1_end']],
-                                distance: parseFloat(values[headerMap['leg1_distance']]) || 0,
-                                cost: parseInt(values[headerMap['leg1_cost']], 10) || 0
-                            },
-                            leg2: values[headerMap['leg2_start']] ? {
-                                start: values[headerMap['leg2_start']],
-                                end: values[headerMap['leg2_end']],
-                                distance: parseFloat(values[headerMap['leg2_distance']]) || 0,
-                                cost: parseInt(values[headerMap['leg2_cost']], 10) || 0
-                            } : null,
-                            // Support old format import
-                            hsrCost: values[headerMap['hsrCost']] ? parseInt(values[headerMap['hsrCost']], 10) : legacyPublic, 
-                            trainCost: parseInt(values[headerMap['trainCost']], 10) || 0,
-                            miscFee: parseInt(values[headerMap['miscFee']], 10) || 0,
-                            totalCost: parseInt(values[headerMap['totalCost']], 10) || 0
-                        };
-                        importedRecords.push(record);
-                    }
-                    travelRecords.push(...importedRecords);
-                    renderRecords();
-                } catch (err) { showError('匯入失敗：' + err.message); }
             };
-            reader.readAsText(file);
-            event.target.value = null;
-        }
 
-        function generateReport() {
-            if (travelRecords.length === 0) { alert('沒有紀錄可供產生報表。'); return; }
-            const contentDiv = document.getElementById('report-modal-content');
-            let totalCarCost = 0;
-            let totalMiscFee = 0;
-            let totalHsrCost = 0;
-            let totalTrainCost = 0;
-            let grandTotal = 0;
-            let tableRows = '';
-            for(let i = 0; i < 15; i++) {
-                const r = travelRecords[i];
-                if (r) {
-                    let displayMonth = '', displayDay = '';
-                    if (r.date) {
-                         const parsedDate = new Date(r.date);
-                         if (!isNaN(parsedDate.getTime())) {
-                            displayMonth = parsedDate.getMonth() + 1;
-                            displayDay = parsedDate.getDate();
-                         }
-                    }
-                    const drivingCost = r.leg1.cost + (r.leg2 ? r.leg2.cost : 0);
-                    totalCarCost += drivingCost;
-                    totalMiscFee += r.miscFee || 0;
-                    totalHsrCost += r.hsrCost || 0;
-                    totalTrainCost += r.trainCost || 0;
-                    grandTotal += r.totalCost;
-                    const startDisplay = simplifyAddress(r.leg1.start, r.isFromHome);
-                    const finalEndDisplay = (r.leg2 && r.leg2.end) ? simplifyAddress(r.leg2.end) : simplifyAddress(r.leg1.end);
-
-                    tableRows += `
-                        <tr class="text-center">
-                            <td>${displayMonth}</td>
-                            <td>${displayDay}</td>
-                            <td>${startDisplay}→${finalEndDisplay}</td>
-                            <td class="text-left px-2">${r.description}</td>
-                            <td>${r.hsrCost > 0 ? r.hsrCost.toLocaleString() : ''}</td>
-                            <td>${r.trainCost > 0 ? r.trainCost.toLocaleString() : ''}</td>
-                            <td>${drivingCost > 0 ? drivingCost.toLocaleString() : ''}</td>
-                            <td></td>
-                            <td>${r.miscFee > 0 ? r.miscFee.toLocaleString() : ''}</td>
-                            <td>${r.totalCost.toLocaleString()}</td>
-                            <td></td>
-                        </tr>`;
+            directionsService.route(request, function(result, status) {
+                if (status == 'OK') {
+                    allRoutes = result.routes; // 存下來供後續選擇用
+                    renderRouteList(result.routes);
+                    
+                    // 預設顯示第一條路線
+                    selectRoute(0, result);
                 } else {
-                     tableRows += `<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
+                    alert('路徑搜尋失敗: ' + status);
                 }
+            });
+        }
+
+        // 渲染左側的路線選擇按鈕
+        function renderRouteList(routes) {
+            const panel = document.getElementById("selection-panel");
+            panel.innerHTML = "<h3>請選擇路線：</h3>";
+
+            routes.forEach((route, index) => {
+                const summary = route.summary; // 例如 "國道1號"
+                const distance = route.legs[0].distance.text;
+                const duration = route.legs[0].duration.text;
+
+                const btn = document.createElement("button");
+                btn.className = "route-btn";
+                btn.innerHTML = `<strong>路線 ${index + 1} (${summary})</strong><br>總長: ${distance} / 時間: ${duration}`;
+                btn.onclick = () => selectRoute(index);
+                panel.appendChild(btn);
+            });
+        }
+
+        // 當使用者選擇某一條路線時
+        function selectRoute(index, resultObj = null) {
+            // 如果沒有傳入 resultObj，代表是從按鈕點擊的，需要重新設定 renderer
+            if (!resultObj) {
+                // 這裡我們需要重新建構一個只包含該路線的 Result 物件給 Renderer 
+                // 但簡單的做法是直接設定 routeIndex (DirectionsRenderer 支援)
+                directionsRenderer.setDirections({routes: allRoutes, request: {}, status: "OK"}); 
+            } else {
+                directionsRenderer.setDirections(resultObj);
             }
-            const currentYear = new Date().getFullYear();
-            const currentMonth = new Date().getMonth() + 1;
-            const inputRocYear = document.getElementById('report-roc-year').value || (currentYear - 1911);
-            const inputMonthStart = document.getElementById('report-month-start').value || currentMonth;
-            const inputMonthEnd = document.getElementById('report-month-end').value || inputMonthStart;
-            let monthDisplay = `${inputMonthStart} 月份`;
-            if (inputMonthStart !== inputMonthEnd) monthDisplay = `${inputMonthStart} 月 至 ${inputMonthEnd} 月份`;
+            
+            directionsRenderer.setRouteIndex(index); // 切換地圖顯示的路線
 
-            contentDiv.innerHTML = `
-                <div class="text-center space-y-2 mb-4">
-                    <h2 class="text-2xl font-bold">${SCHOOL_NAME}</h2>
-                    <h3 class="text-xl font-bold">出差旅費報告表</h3>
-                </div>
-                <div class="flex justify-between text-sm mb-2">
-                    <span>出差事由：詳如工作記要欄</span>
-                    <span>中華民國 ${inputRocYear} 年 ${monthDisplay}</span>
-                </div>
-                <table class="w-full border-collapse text-sm">
-                    <thead>
-                        <tr class="text-center font-bold">
-                            <td colspan="2">日期</td>
-                            <td rowspan="2" class="w-24">起訖地點</td>
-                            <td rowspan="2" class="w-48">工作記要</td>
-                            <td colspan="5">交通費</td>
-                            <td rowspan="2">總計</td>
-                            <td rowspan="2" class="w-24">備註</td>
-                        </tr>
-                        <tr class="text-center font-bold">
-                            <td class="w-10">月</td>
-                            <td class="w-10">日</td>
-                            <td class="w-14">高鐵</td>
-                            <td class="w-14">火車</td>
-                            <td class="w-14">汽車</td>
-                            <td class="w-14">住宿費</td>
-                            <td class="w-14">雜費</td>
-                        </tr>
-                    </thead>
-                    <tbody>${tableRows}</tbody>
-                    <tfoot>
-                        <tr class="text-center font-bold">
-                            <td colspan="4">合 計</td>
-                            <td>${totalHsrCost > 0 ? totalHsrCost.toLocaleString() : ''}</td>
-                            <td>${totalTrainCost > 0 ? totalTrainCost.toLocaleString() : ''}</td>
-                            <td>${totalCarCost > 0 ? totalCarCost.toLocaleString() : ''}</td>
-                            <td></td>
-                            <td>${totalMiscFee > 0 ? totalMiscFee.toLocaleString() : ''}</td>
-                            <td>${grandTotal > 0 ? grandTotal.toLocaleString() : ''}</td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                           <td colspan="11" class="text-left align-top p-2" style="min-height: 4em; vertical-align: top;">
-                                領款人收據：茲收到差旅費合計金額新台幣 <span class="font-bold">${grandTotal.toLocaleString()}</span> 元整。具領人：
-                           </td>
-                        </tr>
-                    </tfoot>
-                </table>
-                 <div class="flex justify-between text-sm mt-4 pt-4">
-                    <span>出差人：</span>
-                    <span>主管：</span>
-                    <span>主計：</span>
-                    <span>校長：</span>
-                </div>
-            `;
-            document.getElementById('report-modal').classList.remove('hidden');
-        }
-        
-        async function takeScreenshot() {
-            const screenshotBtn = document.getElementById('screenshot-btn');
-            const originalBtnContent = screenshotBtn.innerHTML;
-            screenshotBtn.disabled = true;
-            screenshotBtn.innerHTML = `<svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            try {
-                const canvas = await html2canvas(document.getElementById('capture-area'), { useCORS: true, allowTaint: true, scale: 1.5 });
-                const link = document.createElement('a');
-                link.download = `差旅費用紀錄-${new Date().toISOString().slice(0, 10)}.png`;
-                link.href = canvas.toDataURL('image/png');
-                link.click();
-            } catch (err) { showError('截圖失敗。'); } 
-            finally { screenshotBtn.disabled = false; screenshotBtn.innerHTML = originalBtnContent; }
+            // 視覺上的按鈕選取效果
+            document.querySelectorAll(".route-btn").forEach((btn, i) => {
+                btn.classList.toggle("active", i === index);
+            });
+
+            // ★ 執行核心邏輯：分析該路線的高速公路段
+            analyzeHighwayDetails(allRoutes[index]);
         }
 
-        function showError(message) {
-            const errorMessageDiv = document.getElementById('error-message');
-            errorMessageDiv.textContent = message;
-            errorMessageDiv.classList.toggle('hidden', !message);
+        // 核心邏輯：解析 Steps 找出上下交流道與里程
+        function analyzeHighwayDetails(route) {
+            const steps = route.legs[0].steps;
+            let highwayDistance = 0;
+            let entryPoint = null;
+            let exitPoint = null;
+            let isOnHighway = false;
+            let highwayName = "";
+
+            // 用 Regex 簡單判斷關鍵字 (國道、高速公路)
+            const highwayRegex = /(國道|高速公路|Freeway)/;
+
+            steps.forEach((step, i) => {
+                // 去除 HTML標籤取得純文字指示 (例如: "併入<b>國道一號</b>")
+                const instructions = step.instructions.replace(/<[^>]*>/g, ""); 
+                
+                // 判斷此步驟是否在高速公路上
+                if (highwayRegex.test(instructions)) {
+                    if (!isOnHighway) {
+                        // 剛進入高速公路 (紀錄進入點)
+                        isOnHighway = true;
+                        // 通常進入點的指示是 "併入國道X號"，這裡我們抓取該步驟的起點位置或前一個步驟的指示
+                        entryPoint = instructions; 
+                        highwayName = instructions; // 暫存路名
+                    }
+                    
+                    // 累加里程
+                    highwayDistance += step.distance.value;
+                    
+                    // 隨時更新最後一個點，當迴圈結束或離開高速公路時，這個點就是離開點
+                    // step.instructions 在高速公路上通常是 "繼續開在國道X號上"，直到下一個 step 是 "下出口"
+                } else {
+                    // 如果之前在高速公路上，現在不在了 -> 代表剛下了交流道
+                    if (isOnHighway) {
+                        isOnHighway = false;
+                        exitPoint = instructions; // 記錄 "下交流道" 的那個指令 (例如: "前往新竹的出口")
+                    }
+                }
+            });
+
+            // 顯示結果
+            const resultDiv = document.getElementById("analysis-result");
+            
+            if (highwayDistance > 0) {
+                resultDiv.style.display = "block";
+                // 公尺轉公里
+                const km = (highwayDistance / 1000).toFixed(1);
+                
+                resultDiv.innerHTML = `
+                    <h4>🛣️ 高速公路分析結果</h4>
+                    <p>此路線經過高速公路路段：<span class="highlight">${km} 公里</span></p>
+                    <ul>
+                        <li><strong>進入點指示：</strong> ${entryPoint || "起點即在高速公路上"}</li>
+                        <li><strong>離開點指示：</strong> ${exitPoint || "終點仍在高速公路上"}</li>
+                    </ul>
+                    <small>* 註：此為地圖路徑推算，與實際 eTag 收費門架里程可能不同。</small>
+                `;
+            } else {
+                resultDiv.style.display = "block";
+                resultDiv.innerHTML = "<h4>🛣️ 一般道路</h4><p>此路線未偵測到主要行駛國道 (或路徑過短)。</p>";
+            }
         }
+
+        // 啟動地圖
+        window.onload = initMap;
+
     </script>
 </body>
 </html>
