@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>國道里程與平均距離計算器</title>
+    <title>國道里程、平均距離與轉換點計算器</title>
     <style>
         body { font-family: "Microsoft JhengHei", sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; background-color: #f4f4f4; }
         h2 { text-align: center; color: #333; }
@@ -22,7 +22,7 @@
         .route-btn:hover { background: #f0f0f0; border-color: #aaa; }
         .route-btn.active { background: #e8f0fe; border-color: #007bff; color: #0056b3; border-left: 5px solid #007bff; }
 
-        /* 統計資訊區塊 (新增) */
+        /* 統計資訊區塊 */
         .stats-box { background: #e3f2fd; padding: 12px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #bbdefb; font-size: 0.95em; color: #0d47a1; }
         .stats-highlight { color: #d32f2f; font-weight: bold; font-size: 1.1em; }
 
@@ -34,20 +34,25 @@
         .result-value { font-size: 1.1em; color: #333; margin-top: 5px; }
         .highlight { color: #d9534f; font-weight: bold; font-size: 1.2em; }
         
-        /* 交流道資訊樣式 */
+        /* 交流道與轉換點資訊樣式 */
         .ic-info { margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px; }
-        .ic-step { display: flex; align-items: flex-start; margin-bottom: 8px; }
-        .ic-icon { min-width: 24px; color: #28a745; font-weight: bold; margin-right: 8px; }
-        .ic-text { color: #555; line-height: 1.4; }
+        .ic-step { display: flex; align-items: flex-start; margin-bottom: 12px; }
+        .ic-icon { min-width: 30px; color: #28a745; font-weight: bold; margin-right: 8px; font-size: 1.1em; }
+        .ic-text { color: #555; line-height: 1.5; }
+        
+        /* 轉換點列表樣式 */
+        .transfer-list { margin-top: 5px; padding-left: 10px; border-left: 3px solid #ffc107; background: #fffbf0; padding: 10px; border-radius: 0 5px 5px 0; }
+        .transfer-item { margin-bottom: 5px; font-size: 0.95em; color: #444; }
+        .transfer-arrow { color: #f57c00; font-weight: bold; padding: 0 5px; }
     </style>
 </head>
 <body>
 
-    <h2>🚗 國道里程與平均距離計算器</h2>
+    <h2>🚗 國道里程、平均距離與轉換點計算器</h2>
     
     <div class="input-group">
         <input type="text" id="start" placeholder="請輸入起點 (例如: 台北101)">
-        <input type="text" id="end" placeholder="請輸入終點 (例如: 台中火車站)">
+        <input type="text" id="end" placeholder="請輸入終點 (例如: 高雄左營高鐵)">
         <button onclick="calculateRoute()">查詢路線</button>
     </div>
 
@@ -93,12 +98,4 @@
 
         function calculateRoute() {
             const start = document.getElementById("start").value;
-            const end = document.getElementById("end").value;
-
-            if (!start || !end) {
-                alert("請輸入起點和終點！");
-                return;
-            }
-
-            const request = {
-                origin:
+            const end =
