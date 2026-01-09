@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>國道里程、平均距離與轉換點計算器</title>
+    <title>國道里程、轉換點與交流道計算器</title>
     <style>
         body { font-family: "Microsoft JhengHei", sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; background-color: #f4f4f4; }
         h2 { text-align: center; color: #333; }
@@ -38,17 +38,21 @@
         .ic-info { margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px; }
         .ic-step { display: flex; align-items: flex-start; margin-bottom: 12px; }
         .ic-icon { min-width: 30px; color: #28a745; font-weight: bold; margin-right: 8px; font-size: 1.1em; }
-        .ic-text { color: #555; line-height: 1.5; }
+        .ic-text { color: #555; line-height: 1.5; width: 100%; }
         
         /* 轉換點列表樣式 */
-        .transfer-list { margin-top: 5px; padding-left: 10px; border-left: 3px solid #ffc107; background: #fffbf0; padding: 10px; border-radius: 0 5px 5px 0; }
-        .transfer-item { margin-bottom: 5px; font-size: 0.95em; color: #444; }
-        .transfer-arrow { color: #f57c00; font-weight: bold; padding: 0 5px; }
+        .transfer-list { margin-top: 5px; padding: 10px; background: #fff8e1; border-radius: 5px; border: 1px solid #ffe0b2; }
+        .transfer-item { margin-bottom: 8px; font-size: 0.95em; color: #444; padding-bottom: 5px; border-bottom: 1px dashed #eec; display: flex; align-items: center; flex-wrap: wrap; }
+        .transfer-item:last-child { border-bottom: none; margin-bottom: 0; }
+        
+        .h-tag { background: #28a745; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.85em; margin-right: 5px; }
+        .ic-tag { background: #ff9800; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.85em; margin: 0 8px; font-weight: bold; box-shadow: 1px 1px 2px rgba(0,0,0,0.1); }
+        .arrow { color: #999; margin: 0 5px; }
     </style>
 </head>
 <body>
 
-    <h2>🚗 國道里程、平均距離與轉換點計算器</h2>
+    <h2>🚗 國道里程、轉換點與交流道計算器</h2>
     
     <div class="input-group">
         <input type="text" id="start" placeholder="請輸入起點 (例如: 台北101)">
@@ -65,7 +69,7 @@
         <div id="map"></div>
     </div>
 
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCQsMxnmE1-3YCotbwGKkDhHiaPln8KwIQ&libraries=places"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places&callback=initMap" async defer></script>
 
     <script>
         let map, directionsService, directionsRenderer;
@@ -136,7 +140,6 @@
         function renderRouteList(routes) {
             const panel = document.getElementById("selection-panel");
             
-            // 既有邏輯：計算最近與最遠的平均值
             let minDistance = Infinity;
             let maxDistance = -Infinity;
 
@@ -158,8 +161,7 @@
                         <div style="margin-bottom:5px;">📊 <strong>距離區間分析</strong></div>
                         <div style="font-size:0.9em; color:#555;">最短: ${minKm} km / 最長: ${maxKm} km</div>
                         <div style="margin-top:5px;">
-                            (最遠+最近) 平均距離：<br>
-                            <span class="stats-highlight">${avgKm} 公里</span>
+                            平均距離：<span class="stats-highlight">${avgKm} 公里</span>
                         </div>
                     </div>
                 `;
@@ -199,6 +201,7 @@
             analyzeHighwayDetails(allRoutes[index]);
         }
 
+        // ★★★ 核心分析邏輯：提取交流道名稱 ★★★
         function analyzeHighwayDetails(route) {
             const leg = route.legs[0];
             const steps = leg.steps;
@@ -209,40 +212,54 @@
             let exitInstruction = null;
             let isOnHighway = false;
 
-            // 用於追蹤國道轉換
             let lastHighwayName = null;
             let transfers = []; 
 
-            // 定義國道關鍵字 Regex
+            // 1. 國道關鍵字 (包含快速道路 Expressway)
             const highwayRegex = /(國道|高速公路|Freeway|Expressway)/i; 
-            // 捕捉國道名稱 Regex (例如：國道1號, 國道3號, National Fwy 1)
+            // 2. 捕捉國道名稱 (例如：國道1號, National Fwy 3)
             const highwayNameRegex = /(國道\d+(?:甲|乙)?號?|National Fwy \d+)/i;
 
             steps.forEach((step, i) => {
-                const rawInstruction = step.instructions;
+                const rawInstruction = step.instructions; // 含 HTML
                 const cleanInstruction = rawInstruction.replace(/<[^>]*>/g, ""); 
                 
                 if (highwayRegex.test(cleanInstruction)) {
                     // --- 狀態：在高速公路上 ---
                     if (!isOnHighway) {
                         isOnHighway = true;
-                        entryInstruction = cleanInstruction; // 記錄上交流道
+                        // 嘗試從指令中提取交流道名稱 (例如 "在 圓山交流道 靠左")
+                        entryInstruction = extractIcName(rawInstruction) || cleanInstruction;
                     }
                     
                     highwayDistanceVal += step.distance.value;
 
-                    // ★ 核心修改：偵測國道轉換 ★
+                    // --- 偵測國道轉換 ---
                     const nameMatch = cleanInstruction.match(highwayNameRegex);
                     if (nameMatch) {
                         const currentName = nameMatch[0];
                         
-                        // 如果已經有紀錄上一條國道，且名稱不同，則為轉換點
                         if (lastHighwayName && lastHighwayName !== currentName) {
+                            // 發現轉換！回頭找前一步驟或當前步驟的「系統/交流道」名稱
+                            // 轉換通常發生在指令：「前往 XX系統」或「在 XX系統 下交流道」
+                            let icName = "轉換點";
+                            
+                            // 策略：檢查當前步驟與上一步驟的指令，尋找「XX系統」或「XX交流道」
+                            const candidates = [rawInstruction];
+                            if (i > 0) candidates.unshift(steps[i-1].instructions);
+
+                            for (let text of candidates) {
+                                const found = extractIcName(text, true); // true 代表優先找「系統」
+                                if (found) {
+                                    icName = found;
+                                    break;
+                                }
+                            }
+
                             transfers.push({
                                 from: lastHighwayName,
                                 to: currentName,
-                                // 嘗試抓取比較易讀的指示，如果當前這步是指示"前往XX"，通常就是轉換點
-                                note: cleanInstruction 
+                                ic: icName
                             });
                         }
                         lastHighwayName = currentName;
@@ -252,12 +269,32 @@
                     // --- 狀態：離開高速公路 ---
                     if (isOnHighway) {
                         isOnHighway = false;
-                        exitInstruction = cleanInstruction; // 記錄下交流道
+                        exitInstruction = extractIcName(rawInstruction) || cleanInstruction;
                     }
                 }
             });
 
             renderAnalysisResult(totalDistanceText, highwayDistanceVal, entryInstruction, exitInstruction, transfers);
+        }
+
+        // 輔助函式：從 HTML 指令中提取「XXX交流道」或「XXX系統」
+        function extractIcName(htmlText, prioritizeSystem = false) {
+            // 移除 HTML 標籤
+            const text = htmlText.replace(/<[^>]*>/g, " "); 
+            
+            // Regex 策略：抓取 "在" 或 "前往" 後面的名詞，直到遇到 "系統" 或 "交流道"
+            // 例如： "在 新竹系統交流道 靠右" -> 抓取 "新竹系統交流道"
+            
+            // 模式 1: 明確的 "XX系統" (高優先權)
+            const systemMatch = text.match(/([\u4e00-\u9fa5]+?系統(?:交流道)?)/);
+            if (prioritizeSystem && systemMatch) return systemMatch[1];
+
+            // 模式 2: "XX交流道"
+            const icMatch = text.match(/([\u4e00-\u9fa5]+?交流道)/);
+            if (icMatch) return icMatch[1];
+            
+            // 模式 3: 若是指示轉接，有時只有 "前往 國道X號" (這種情況回傳 null，讓主程式顯示完整指令)
+            return null;
         }
 
         function renderAnalysisResult(totalDist, highwayVal, entry, exit, transfers) {
@@ -273,10 +310,24 @@
                 // 產生轉換點 HTML
                 let transferHtml = "";
                 if (transfers.length > 0) {
-                    transferHtml = `<div class="ic-step"><span class="ic-icon">🔀</span><div class="ic-text"><strong>國道轉換明細：</strong><div class="transfer-list">`;
+                    transferHtml = `
+                    <div class="ic-step">
+                        <span class="ic-icon">🔀</span>
+                        <div class="ic-text">
+                            <strong>國道轉換明細：</strong>
+                            <div class="transfer-list">`;
+                    
                     transfers.forEach(t => {
-                        transferHtml += `<div class="transfer-item">${t.from} <span class="transfer-arrow">➔</span> ${t.to}</div>`;
+                        transferHtml += `
+                            <div class="transfer-item">
+                                <span class="h-tag">${t.from}</span>
+                                <span class="arrow">➔</span>
+                                <span class="ic-tag">${t.ic}</span>
+                                <span class="arrow">➔</span>
+                                <span class="h-tag">${t.to}</span>
+                            </div>`;
                     });
+                    
                     transferHtml += `</div></div></div>`;
                 }
 
@@ -296,12 +347,14 @@
                     <div class="ic-info">
                         <div class="ic-step">
                             <span class="ic-icon">⬆️</span>
-                            <span class="ic-text"><strong>進入點/交流道：</strong><br>${entryText}</span>
+                            <span class="ic-text"><strong>上交流道：</strong> ${entryText}</span>
                         </div>
                         
-                        ${transferHtml} <div class="ic-step">
+                        ${transferHtml}
+
+                        <div class="ic-step">
                             <span class="ic-icon">⬇️</span>
-                            <span class="ic-text"><strong>離開點/交流道：</strong><br>${exitText}</span>
+                            <span class="ic-text"><strong>下交流道：</strong> ${exitText}</span>
                         </div>
                     </div>
                 `;
@@ -321,8 +374,6 @@
                 `;
             }
         }
-
-        window.onload = initMap;
     </script>
 </body>
 </html>
