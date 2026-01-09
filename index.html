@@ -98,4 +98,231 @@
 
         function calculateRoute() {
             const start = document.getElementById("start").value;
-            const end =
+            const end = document.getElementById("end").value;
+
+            if (!start || !end) {
+                alert("請輸入起點和終點！");
+                return;
+            }
+
+            const request = {
+                origin: start,
+                destination: end,
+                travelMode: 'DRIVING',
+                provideRouteAlternatives: true,
+                drivingOptions: {
+                    departureTime: new Date(),
+                    trafficModel: 'bestguess'
+                }
+            };
+
+            directionsService.route(request, function(result, status) {
+                if (status == 'OK') {
+                    allRoutes = result.routes;
+                    renderRouteList(result.routes);
+                    selectRoute(0, result);
+                } else {
+                    handleError(status);
+                }
+            });
+        }
+
+        function handleError(status) {
+            if (status === 'NOT_FOUND') alert('找不到地點，請嘗試輸入完整地址。');
+            else if (status === 'ZERO_RESULTS') alert('無法規劃開車路線。');
+            else alert('查詢失敗: ' + status);
+        }
+
+        function renderRouteList(routes) {
+            const panel = document.getElementById("selection-panel");
+            
+            // 既有邏輯：計算最近與最遠的平均值
+            let minDistance = Infinity;
+            let maxDistance = -Infinity;
+
+            routes.forEach(route => {
+                const val = route.legs[0].distance.value; 
+                if (val < minDistance) minDistance = val;
+                if (val > maxDistance) maxDistance = val;
+            });
+
+            const avgKm = ((minDistance + maxDistance) / 2 / 1000).toFixed(1);
+            const minKm = (minDistance / 1000).toFixed(1);
+            const maxKm = (maxDistance / 1000).toFixed(1);
+
+            let htmlContent = `<h3 style='margin-top:0; padding-bottom:10px; border-bottom:1px solid #eee;'>建議路線</h3>`;
+            
+            if (routes.length > 0) {
+                htmlContent += `
+                    <div class="stats-box">
+                        <div style="margin-bottom:5px;">📊 <strong>距離區間分析</strong></div>
+                        <div style="font-size:0.9em; color:#555;">最短: ${minKm} km / 最長: ${maxKm} km</div>
+                        <div style="margin-top:5px;">
+                            (最遠+最近) 平均距離：<br>
+                            <span class="stats-highlight">${avgKm} 公里</span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            panel.innerHTML = htmlContent;
+
+            routes.forEach((route, index) => {
+                const summary = route.summary; 
+                const distance = route.legs[0].distance.text;
+                const duration = route.legs[0].duration.text;
+
+                const btn = document.createElement("button");
+                btn.className = "route-btn";
+                btn.innerHTML = `
+                    <div style="font-weight:bold; font-size:1.1em;">路線 ${index + 1}</div>
+                    <div style="color:#666; font-size:0.9em;">${summary}</div>
+                    <div style="margin-top:5px;">總長: ${distance} | 時間: ${duration}</div>
+                `;
+                btn.onclick = () => selectRoute(index);
+                panel.appendChild(btn);
+            });
+        }
+
+        function selectRoute(index, resultObj = null) {
+            if (!resultObj) {
+                directionsRenderer.setDirections({routes: allRoutes, request: {}, status: "OK"}); 
+            } else {
+                directionsRenderer.setDirections(resultObj);
+            }
+            directionsRenderer.setRouteIndex(index);
+            
+            document.querySelectorAll(".route-btn").forEach((btn, i) => {
+                btn.classList.toggle("active", i === index);
+            });
+
+            analyzeHighwayDetails(allRoutes[index]);
+        }
+
+        function analyzeHighwayDetails(route) {
+            const leg = route.legs[0];
+            const steps = leg.steps;
+            
+            const totalDistanceText = leg.distance.text;
+            let highwayDistanceVal = 0;
+            let entryInstruction = null;
+            let exitInstruction = null;
+            let isOnHighway = false;
+
+            // 用於追蹤國道轉換
+            let lastHighwayName = null;
+            let transfers = []; 
+
+            // 定義國道關鍵字 Regex
+            const highwayRegex = /(國道|高速公路|Freeway|Expressway)/i; 
+            // 捕捉國道名稱 Regex (例如：國道1號, 國道3號, National Fwy 1)
+            const highwayNameRegex = /(國道\d+(?:甲|乙)?號?|National Fwy \d+)/i;
+
+            steps.forEach((step, i) => {
+                const rawInstruction = step.instructions;
+                const cleanInstruction = rawInstruction.replace(/<[^>]*>/g, ""); 
+                
+                if (highwayRegex.test(cleanInstruction)) {
+                    // --- 狀態：在高速公路上 ---
+                    if (!isOnHighway) {
+                        isOnHighway = true;
+                        entryInstruction = cleanInstruction; // 記錄上交流道
+                    }
+                    
+                    highwayDistanceVal += step.distance.value;
+
+                    // ★ 核心修改：偵測國道轉換 ★
+                    const nameMatch = cleanInstruction.match(highwayNameRegex);
+                    if (nameMatch) {
+                        const currentName = nameMatch[0];
+                        
+                        // 如果已經有紀錄上一條國道，且名稱不同，則為轉換點
+                        if (lastHighwayName && lastHighwayName !== currentName) {
+                            transfers.push({
+                                from: lastHighwayName,
+                                to: currentName,
+                                // 嘗試抓取比較易讀的指示，如果當前這步是指示"前往XX"，通常就是轉換點
+                                note: cleanInstruction 
+                            });
+                        }
+                        lastHighwayName = currentName;
+                    }
+
+                } else {
+                    // --- 狀態：離開高速公路 ---
+                    if (isOnHighway) {
+                        isOnHighway = false;
+                        exitInstruction = cleanInstruction; // 記錄下交流道
+                    }
+                }
+            });
+
+            renderAnalysisResult(totalDistanceText, highwayDistanceVal, entryInstruction, exitInstruction, transfers);
+        }
+
+        function renderAnalysisResult(totalDist, highwayVal, entry, exit, transfers) {
+            const resultDiv = document.getElementById("analysis-result");
+            resultDiv.style.display = "block";
+
+            let highwayKm = (highwayVal / 1000).toFixed(1);
+
+            if (highwayVal > 0) {
+                const entryText = entry || "起點即在高速公路上";
+                const exitText = exit || "終點仍在高速公路上";
+                
+                // 產生轉換點 HTML
+                let transferHtml = "";
+                if (transfers.length > 0) {
+                    transferHtml = `<div class="ic-step"><span class="ic-icon">🔀</span><div class="ic-text"><strong>國道轉換明細：</strong><div class="transfer-list">`;
+                    transfers.forEach(t => {
+                        transferHtml += `<div class="transfer-item">${t.from} <span class="transfer-arrow">➔</span> ${t.to}</div>`;
+                    });
+                    transferHtml += `</div></div></div>`;
+                }
+
+                resultDiv.innerHTML = `
+                    <h4>📊 路線分析詳情</h4>
+                    <div class="result-grid">
+                        <div class="result-item">
+                            <div class="result-label">🏁 全程總距離</div>
+                            <div class="result-value">${totalDist}</div>
+                        </div>
+                         <div class="result-item" style="background:#e8f5e9;">
+                            <div class="result-label">🛣️ 國道/高架里程</div>
+                            <div class="result-value highlight">${highwayKm} km</div>
+                        </div>
+                    </div>
+
+                    <div class="ic-info">
+                        <div class="ic-step">
+                            <span class="ic-icon">⬆️</span>
+                            <span class="ic-text"><strong>進入點/交流道：</strong><br>${entryText}</span>
+                        </div>
+                        
+                        ${transferHtml} <div class="ic-step">
+                            <span class="ic-icon">⬇️</span>
+                            <span class="ic-text"><strong>離開點/交流道：</strong><br>${exitText}</span>
+                        </div>
+                    </div>
+                `;
+            } else {
+                resultDiv.innerHTML = `
+                    <h4>📊 路線分析詳情</h4>
+                    <div class="result-grid">
+                        <div class="result-item">
+                            <div class="result-label">🏁 全程總距離</div>
+                            <div class="result-value">${totalDist}</div>
+                        </div>
+                         <div class="result-item">
+                            <div class="result-label">🛣️ 道路類型</div>
+                            <div class="result-value">平面道路 (無國道)</div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        window.onload = initMap;
+    </script>
+</body>
+</html>
